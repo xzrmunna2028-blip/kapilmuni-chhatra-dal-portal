@@ -1,0 +1,24 @@
+{
+  "overview": "A professional political organization portal for ২নং কপিলমুনি ইউনিয়ন ছাত্রদল (Bangladesh Jatiotabadi Chhatra Dal). Features a patriotic landing page in Bengali and English, member registration with visual robot verification and photo upload, a member dashboard with PDF membership card, hierarchical committee directory, messenger-style group chat, and a full admin panel for managing members, notices, gallery, and approvals.",
+  "features": [
+    "Patriotic landing page with Bengali hero and BJCD branding",
+    "Advanced member registration with photo upload and visual robot verification",
+    "Member dashboard with profile card and PDF membership card download",
+    "Hierarchical committee directory (Convener → Members)",
+    "Real-time group chat with 3-second polling",
+    "Digital notice board, photo gallery, alumni, achievements, and information library",
+    "Admin panel with member approval, CRUD controls, and stats dashboard"
+  ],
+  "category": "organization",
+  "tags": [
+    "bangladesh",
+    "political-organization",
+    "student-portal",
+    "chhatra-dal",
+    "bnp",
+    "bjcd",
+    "bengali",
+    "member-management"
+  ],
+  "last_updated": "2026-05-12T22:12:54.900Z"
+}

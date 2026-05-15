@@ -1,0 +1,219 @@
+type _ImmutableObjectStorageRefillResult = 
+ record {
+   success: opt bool;
+   topped_up_amount: opt nat;
+ };
+type _ImmutableObjectStorageRefillInformation = record {
+                                                  proposed_top_up_amount:
+                                                   opt nat;};
+type _ImmutableObjectStorageCreateCertificateResult = 
+ record {
+   blob_hash: text;
+   method: text;
+ };
+type UserRole = 
+ variant {
+   admin;
+   guest;
+   user;
+ };
+type UpdateMemberPayload = 
+ record {
+   adminNotes: text;
+   designation: text;
+   email: text;
+   fullAddress: text;
+   fullName: text;
+   joinReason: text;
+   phone: text;
+   photoBlob: ExternalBlob;
+ };
+type Timestamp = int;
+type SendMessagePayload = 
+ record {
+   senderName: text;
+   senderPhotoUrl: text;
+   "text": text;
+ };
+type RegisterMemberPayload = 
+ record {
+   designation: text;
+   email: text;
+   fullAddress: text;
+   fullName: text;
+   joinReason: text;
+   phone: text;
+   photoBlob: ExternalBlob;
+ };
+type Notice = 
+ record {
+   archived: bool;
+   author: text;
+   content: text;
+   date: Timestamp;
+   id: nat;
+   title: text;
+ };
+type MemberStatus = 
+ variant {
+   approved;
+   pending;
+   rejected;
+ };
+type MemberStats = 
+ record {
+   joinedToday: nat;
+   joinedYesterday: nat;
+   pendingCount: nat;
+   total: nat;
+ };
+type MemberId = nat;
+type Member = 
+ record {
+   adminNotes: text;
+   approvedAt: opt Timestamp;
+   designation: text;
+   email: text;
+   fullAddress: text;
+   fullName: text;
+   id: MemberId;
+   joinReason: text;
+   phone: text;
+   photoBlob: ExternalBlob;
+   registeredAt: Timestamp;
+   rejectionReason: text;
+   status: MemberStatus;
+ };
+type LibraryItem = 
+ record {
+   category: text;
+   description: text;
+   fileBlob: ExternalBlob;
+   id: nat;
+   title: text;
+   uploadedDate: Timestamp;
+ };
+type GalleryPhoto = 
+ record {
+   caption: text;
+   id: nat;
+   photoBlob: ExternalBlob;
+   uploadedDate: Timestamp;
+   uploaderName: text;
+ };
+type ExternalBlob = blob;
+type Designation = 
+ record {
+   id: nat;
+   rank: nat;
+   title: text;
+ };
+type CreateNoticePayload = 
+ record {
+   author: text;
+   content: text;
+   title: text;
+ };
+type CreateLibraryItemPayload = 
+ record {
+   category: text;
+   description: text;
+   fileBlob: ExternalBlob;
+   title: text;
+ };
+type CreateGalleryPhotoPayload = 
+ record {
+   caption: text;
+   photoBlob: ExternalBlob;
+   uploaderName: text;
+ };
+type CreateAlumniPayload = 
+ record {
+   currentStatus: text;
+   designation: text;
+   name: text;
+   photoBlob: opt ExternalBlob;
+   yearsActive: text;
+ };
+type CreateAchievementPayload = 
+ record {
+   description: text;
+   memberName: text;
+   photoBlob: opt ExternalBlob;
+   title: text;
+ };
+type ChatMessage = 
+ record {
+   id: nat;
+   senderName: text;
+   senderPhotoUrl: text;
+   "text": text;
+   timestamp: Timestamp;
+ };
+type AlumniRecord = 
+ record {
+   currentStatus: text;
+   designation: text;
+   id: nat;
+   name: text;
+   photoBlob: opt ExternalBlob;
+   yearsActive: text;
+ };
+type Achievement = 
+ record {
+   date: Timestamp;
+   description: text;
+   id: nat;
+   memberName: text;
+   photoBlob: opt ExternalBlob;
+   title: text;
+ };
+service : {
+  _immutableObjectStorageBlobsAreLive: (hashes: vec blob) -> (vec bool) query;
+  _immutableObjectStorageBlobsToDelete: () -> (vec blob) query;
+  _immutableObjectStorageConfirmBlobDeletion: (blobs: vec blob) -> ();
+  _immutableObjectStorageCreateCertificate: (blobHash: text) ->
+   (_ImmutableObjectStorageCreateCertificateResult);
+  _immutableObjectStorageRefillCashier: (refillInformation:
+   opt _ImmutableObjectStorageRefillInformation) ->
+   (_ImmutableObjectStorageRefillResult);
+  _immutableObjectStorageUpdateGatewayPrincipals: () -> ();
+  _initializeAccessControl: () -> ();
+  addAchievement: (payload: CreateAchievementPayload) -> (Achievement);
+  addAlumni: (payload: CreateAlumniPayload) -> (AlumniRecord);
+  addDesignation: (title: text, rank: nat) -> (Designation);
+  addGalleryPhoto: (payload: CreateGalleryPhotoPayload) -> (GalleryPhoto);
+  addLibraryItem: (payload: CreateLibraryItemPayload) -> (LibraryItem);
+  adminLogin: (email: text, password: text) -> (opt text);
+  approveMember: (id: MemberId) -> (bool);
+  archiveNotice: (id: nat) -> (bool);
+  assignCallerUserRole: (user: principal, role: UserRole) -> ();
+  createNotice: (payload: CreateNoticePayload) -> (Notice);
+  deleteAchievement: (id: nat) -> (bool);
+  deleteAlumni: (id: nat) -> (bool);
+  deleteChatMessage: (id: nat) -> (bool);
+  deleteDesignation: (id: nat) -> (bool);
+  deleteGalleryPhoto: (id: nat) -> (bool);
+  deleteLibraryItem: (id: nat) -> (bool);
+  deleteMember: (id: MemberId) -> (bool);
+  deleteNotice: (id: nat) -> (bool);
+  getCallerUserRole: () -> (UserRole) query;
+  getChatMessages: (limit: nat) -> (vec ChatMessage) query;
+  getMember: (id: MemberId) -> (opt Member) query;
+  getMemberStats: () -> (MemberStats) query;
+  getMyMemberProfile: () -> (opt Member) query;
+  isCallerAdmin: () -> (bool) query;
+  listAchievements: () -> (vec Achievement) query;
+  listAlumni: () -> (vec AlumniRecord) query;
+  listDesignations: () -> (vec Designation) query;
+  listGalleryPhotos: () -> (vec GalleryPhoto) query;
+  listLibraryItems: () -> (vec LibraryItem) query;
+  listMembers: () -> (vec Member) query;
+  listMembersByStatus: (status: MemberStatus) -> (vec Member) query;
+  listNotices: (includeArchived: bool) -> (vec Notice) query;
+  registerMember: (payload: RegisterMemberPayload) -> (MemberId);
+  rejectMember: (id: MemberId, reason: text) -> (bool);
+  sendChatMessage: (payload: SendMessagePayload) -> (ChatMessage);
+  updateMember: (id: MemberId, payload: UpdateMemberPayload) -> (bool);
+  validateAdminSession: (token: text) -> (bool) query;
+}

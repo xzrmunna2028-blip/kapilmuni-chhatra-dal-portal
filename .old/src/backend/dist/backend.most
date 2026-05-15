@@ -1,0 +1,155 @@
+// Version: 1.0.0
+type Achievement__759212123 =
+  {
+    date : Timestamp__301639476;
+    description : Text;
+    id : Nat;
+    memberName : Text;
+    photoBlob : ?ExternalBlob__671167343;
+    title : Text
+  };
+type AlumniRecord__805694889 =
+  {
+    currentStatus : Text;
+    designation : Text;
+    id : Nat;
+    name : Text;
+    photoBlob : ?ExternalBlob__671167343;
+    yearsActive : Text
+  };
+type ChatMessage__294473763 =
+  {
+    id : Nat;
+    senderName : Text;
+    senderPhotoUrl : Text;
+    text : Text;
+    timestamp : Timestamp__301639476
+  };
+type Data__791452850<K, V> =
+  {var count : Nat__490723111; kvs : [var ?(K, V)]};
+type Designation__36310970 = {id : Nat; rank : Nat; title : Text};
+type ExternalBlob__671167343 = Blob;
+type GalleryPhoto__729433066 =
+  {
+    caption : Text;
+    id : Nat;
+    photoBlob : ExternalBlob__671167343;
+    uploadedDate : Timestamp__301639476;
+    uploaderName : Text
+  };
+type Internal__8484328<K, V> =
+  {children : [var ?Node__46230540<K, V>]; data : Data__791452850<K, V>};
+type Leaf__809889148<K, V> = {data : Data__791452850<K, V>};
+type LibraryItem__265794827 =
+  {
+    category : Text;
+    description : Text;
+    fileBlob : ExternalBlob__671167343;
+    id : Nat;
+    title : Text;
+    uploadedDate : Timestamp__301639476
+  };
+type Map__158565046<K, V> = Map__297112838<K, V>;
+type Map__297112838<K, V> =
+  {var root : Node__46230540<K, V>; var size : Nat__490723111};
+type Map__605269027<K, V> = Map__158565046<K, V>;
+type MemberId__2990653 = Nat;
+type MemberStatus__80880532 = {#approved; #pending; #rejected};
+type Member__248738349 =
+  {
+    adminNotes : Text;
+    approvedAt : ?Timestamp__301639476;
+    designation : Text;
+    email : Text;
+    fullAddress : Text;
+    fullName : Text;
+    id : MemberId__2990653;
+    joinReason : Text;
+    phone : Text;
+    photoBlob : ExternalBlob__671167343;
+    registeredAt : Timestamp__301639476;
+    rejectionReason : Text;
+    status : MemberStatus__80880532
+  };
+type Nat__490723111 = Nat__920180692;
+type Nat__920180692 = Nat;
+type Node__46230540<K, V> =
+  {#internal : Internal__8484328<K, V>; #leaf : Leaf__809889148<K, V>};
+type Notice__697516538 =
+  {
+    archived : Bool;
+    author : Text;
+    content : Text;
+    date : Timestamp__301639476;
+    id : Nat;
+    title : Text
+  };
+type Timestamp__301639476 = Int;
+type UserRole__1073662873 = {#admin; #guest; #user};
+actor {
+  stable accessControlState :
+    {
+      var adminAssigned : Bool;
+      userRoles : Map__605269027<Principal, UserRole__1073662873>
+    };
+  stable achievements :
+    {
+      var blockIndex : Nat__490723111;
+      var blocks : [var [var ?Achievement__759212123]];
+      var elementIndex : Nat__490723111
+    };
+  stable alumni :
+    {
+      var blockIndex : Nat__490723111;
+      var blocks : [var [var ?AlumniRecord__805694889]];
+      var elementIndex : Nat__490723111
+    };
+  stable chatMessages :
+    {
+      var blockIndex : Nat__490723111;
+      var blocks : [var [var ?ChatMessage__294473763]];
+      var elementIndex : Nat__490723111
+    };
+  stable designations :
+    {
+      var blockIndex : Nat__490723111;
+      var blocks : [var [var ?Designation__36310970]];
+      var elementIndex : Nat__490723111
+    };
+  stable galleryPhotos :
+    {
+      var blockIndex : Nat__490723111;
+      var blocks : [var [var ?GalleryPhoto__729433066]];
+      var elementIndex : Nat__490723111
+    };
+  stable libraryItems :
+    {
+      var blockIndex : Nat__490723111;
+      var blocks : [var [var ?LibraryItem__265794827]];
+      var elementIndex : Nat__490723111
+    };
+  stable members :
+    {
+      var blockIndex : Nat__490723111;
+      var blocks : [var [var ?Member__248738349]];
+      var elementIndex : Nat__490723111
+    };
+  stable notices :
+    {
+      var blockIndex : Nat__490723111;
+      var blocks : [var [var ?Notice__697516538]];
+      var elementIndex : Nat__490723111
+    };
+  stable state :
+    {
+      var adminSessionToken : Text;
+      var nextAchievementId : Nat;
+      var nextAlumniId : Nat;
+      var nextDesignationId : Nat;
+      var nextLibraryId : Nat;
+      var nextMemberId : Nat;
+      var nextMessageId : Nat;
+      var nextNoticeId : Nat;
+      var nextPhotoId : Nat
+    }
+};
