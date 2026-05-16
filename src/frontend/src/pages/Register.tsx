@@ -15,7 +15,7 @@ interface FormValues {
   email: string;
   designation: string;
   fullAddress: string;
-  joinReason: string;
+  joinReasons: string[];
 }
 
 // ── congratulations modal ───────────────────────────────────────────────────────
@@ -91,16 +91,50 @@ function CongratulationsModal({ onClose }: { onClose: () => void }) {
 
 // ── designation options ─────────────────────────────────────────────────────────
 const DESIGNATIONS = [
-  { value: "সদস্য", label: "সদস্য / Member" },
-  { value: "আহ্বায়ক", label: "আহ্বায়ক / Convener" },
-  {
-    value: "সিনিয়র যুগ্ম আহ্বায়ক",
-    label: "সিনিয়র যুগ্ম আহ্বায়ক / Senior Joint Convener",
-  },
-  { value: "যুগ্ম আহ্বায়ক", label: "যুগ্ম আহ্বায়ক / Joint Convener" },
-  { value: "সাধারণ সম্পাদক", label: "সাধারণ সম্পাদক / General Secretary" },
-  { value: "সহকারী সম্পাদক", label: "সহকারী সম্পাদক / Assistant Secretary" },
-  { value: "সাংগঠনিক সম্পাদক", label: "সাংগঠনিক সম্পাদক / Organizing Secretary" },
+  { value: "সভাপতি", label: "সভাপতি" },
+  { value: "সিনিয়র সহ-সভাপতি", label: "সিনিয়র সহ-সভাপতি" },
+  { value: "সহ-সভাপতি", label: "সহ-সভাপতি" },
+  { value: "সাধারণ সম্পাদক", label: "সাধারণ সম্পাদক" },
+  { value: "যুগ্ম সাধারণ সম্পাদক", label: "যুগ্ম সাধারণ সম্পাদক" },
+  { value: "সাংগঠনিক সম্পাদক", label: "সাংগঠনিক সম্পাদক" },
+  { value: "দপ্তর সম্পাদক", label: "দপ্তর সম্পাদক" },
+  { value: "প্রচার সম্পাদক", label: "প্রচার সম্পাদক" },
+  { value: "অর্থ সম্পাদক", label: "অর্থ সম্পাদক" },
+  { value: "ত্রাণ ও সমাজকল্যাণ সম্পাদক", label: "ত্রাণ ও সমাজকল্যাণ সম্পাদক" },
+  { value: "আইন বিষয়ক সম্পাদক", label: "আইন বিষয়ক সম্পাদক" },
+  { value: "বিজ্ঞান ও প্রযুক্তি সম্পাদক", label: "বিজ্ঞান ও প্রযুক্তি সম্পাদক" },
+  { value: "তথ্য ও গবেষণা সম্পাদক", label: "তথ্য ও গবেষণা সম্পাদক" },
+  { value: "সাহিত্য ও সংস্কৃতি সম্পাদক", label: "সাহিত্য ও সংস্কৃতি সম্পাদক" },
+  { value: "ক্রীড়া সম্পাদক", label: "ক্রীড়া সম্পাদক" },
+  { value: "স্বাস্থ্য বিষয়ক সম্পাদক", label: "স্বাস্থ্য বিষয়ক সম্পাদক" },
+  { value: "শিক্ষা বিষয়ক সম্পাদক", label: "শিক্ষা বিষয়ক সম্পাদক" },
+  { value: "পাঠাগার সম্পাদক", label: "পাঠাগার সম্পাদক" },
+  { value: "মানব সম্পদ উন্নয়ন সম্পাদক", label: "মানব সম্পদ উন্নয়ন সম্পাদক" },
+  { value: "কৃষি বিষয়ক সম্পাদক", label: "কৃষি বিষয়ক সম্পাদক" },
+  { value: "শ্রম বিষয়ক সম্পাদক", label: "শ্রম বিষয়ক সম্পাদক" },
+  { value: "আন্তর্জাতিক বিষয়ক সম্পাদক", label: "আন্তর্জাতিক বিষয়ক সম্পাদক" },
+  { value: "ধর্ম বিষয়ক সম্পাদক", label: "ধর্ম বিষয়ক সম্পাদক" },
+  { value: "কার্যনির্বাহী সদস্য", label: "কার্যনির্বাহী সদস্য" },
+  { value: "কনভেনর", label: "কনভেনর" },
+  { value: "যুগ্ম কনভেনর", label: "যুগ্ম কনভেনর" },
+  { value: "সিনিয়র যুগ্ম কনভেনর", label: "সিনিয়র যুগ্ম কনভেনর" },
+  { value: "সাধারণ সদস্য", label: "সাধারণ সদস্য" },
+];
+
+// ── join reasons ──────────────────────────────────────────────────────────────
+const JOIN_REASONS = [
+  "দেশমাতৃকার সেবা করতে চাই",
+  "বিএনপির আদর্শে বিশ্বাসী",
+  "জাতীয়তাবাদী আন্দোলনে অংশ নিতে চাই",
+  "ছাত্রসমাজের অধিকার রক্ষা করতে চাই",
+  "গণতন্ত্র পুনরুদ্ধারে ভূমিকা রাখতে চাই",
+  "শিক্ষাঙ্গনে শান্তি ও শৃঙ্খলা প্রতিষ্ঠা করতে চাই",
+  "তরুণ প্রজন্মের নেতৃত্ব গড়তে চাই",
+  "সামাজিক উন্নয়নে কাজ করতে চাই",
+  "দুর্নীতিমুক্ত বাংলাদেশ চাই",
+  "খালেদা জিয়ার মুক্তি ও গণতন্ত্র প্রতিষ্ঠায় লড়াই করতে চাই",
+  "দলের সাংগঠনিক কাজে সহায়তা করতে চাই",
+  "নতুন বাংলাদেশ গড়তে চাই",
 ];
 
 // ── main component ──────────────────────────────────────────────────────────────
@@ -120,7 +154,7 @@ export default function RegisterPage() {
       email: "",
       designation: "",
       fullAddress: "",
-      joinReason: "",
+      joinReasons: [],
     },
   });
 
@@ -179,7 +213,7 @@ export default function RegisterPage() {
         email: values.email,
         designation: values.designation,
         fullAddress: values.fullAddress,
-        joinReason: values.joinReason,
+        joinReason: values.joinReasons.join("\n"),
         photoBlob,
       });
 
@@ -406,28 +440,86 @@ export default function RegisterPage() {
             )}
           </div>
 
-          {/* Why Join */}
-          <div className="space-y-1">
-            <label
-              htmlFor="joinReason"
+          {/* Why Join — checkbox grid */}
+          <div className="space-y-2">
+            <p
+              id="joinreasons-label"
               className="block text-sm font-semibold text-foreground"
             >
               কেন ছাত্রদলে যোগ দিতে চান? <span className="text-[#DC143C]">*</span>
-            </label>
-            <textarea
-              id="joinReason"
-              {...register("joinReason", { required: "কারণ লিখুন" })}
-              rows={4}
-              placeholder="আপনার ছাত্রদলে যোগ দেওয়ার কারণ বিস্তারিত লিখুন..."
-              className={`${fieldClass} resize-none`}
-              data-ocid="register.joinreason_textarea"
+              <span className="block text-xs font-normal text-muted-foreground mt-0.5">
+                (একাধিক নির্বাচন করুন)
+              </span>
+            </p>
+            <Controller
+              name="joinReasons"
+              control={control}
+              rules={{
+                validate: (v) => v.length > 0 || "অন্তত একটি কারণ নির্বাচন করুন",
+              }}
+              render={({ field }) => (
+                <fieldset
+                  className="grid grid-cols-1 sm:grid-cols-2 gap-2 border-0 p-0 m-0"
+                  aria-labelledby="joinreasons-label"
+                  data-ocid="register.joinreason_select"
+                >
+                  {JOIN_REASONS.map((reason, idx) => {
+                    const checked = field.value.includes(reason);
+                    return (
+                      <button
+                        key={reason}
+                        type="button"
+                        onClick={() => {
+                          const next = checked
+                            ? field.value.filter((r) => r !== reason)
+                            : [...field.value, reason];
+                          field.onChange(next);
+                        }}
+                        className={`flex items-start gap-2.5 px-3 py-2.5 rounded-lg border text-left text-sm font-medium transition-all duration-200 ${
+                          checked
+                            ? "border-[#006A4E] bg-[#006A4E]/10 text-[#006A4E]"
+                            : "border-border bg-background text-foreground hover:border-[#006A4E]/50 hover:bg-[#006A4E]/5"
+                        }`}
+                        data-ocid={`register.joinreason.item.${idx + 1}`}
+                        aria-pressed={checked}
+                      >
+                        <span
+                          className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center transition-all duration-200 ${
+                            checked
+                              ? "border-[#006A4E] bg-[#006A4E]"
+                              : "border-muted-foreground"
+                          }`}
+                        >
+                          {checked && (
+                            <svg
+                              className="w-2.5 h-2.5 text-white"
+                              fill="none"
+                              viewBox="0 0 10 8"
+                              aria-hidden="true"
+                            >
+                              <path
+                                d="M1 4l3 3 5-6"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          )}
+                        </span>
+                        <span className="leading-snug">{reason}</span>
+                      </button>
+                    );
+                  })}
+                </fieldset>
+              )}
             />
-            {errors.joinReason && (
+            {errors.joinReasons && (
               <p
                 className="text-xs text-[#DC143C] mt-0.5"
                 data-ocid="register.joinreason_field_error"
               >
-                {errors.joinReason.message}
+                {errors.joinReasons.message}
               </p>
             )}
           </div>

@@ -1,24 +1,23 @@
 {
-  "overview": "A professional political organization portal for ২নং কপিলমুনি ইউনিয়ন ছাত্রদল (Bangladesh Jatiotabadi Chhatra Dal). Features a patriotic landing page in Bengali and English, member registration with visual robot verification and photo upload, a member dashboard with PDF membership card, hierarchical committee directory, messenger-style group chat, and a full admin panel for managing members, notices, gallery, and approvals.",
+  "overview": "A full-featured political organization portal for ২নং কপিলমুনি ইউনিয়ন ছাত্রদল (2 No. Kapil Muni Union Chhatra Dal). Features member registration with admin approval workflow, premium animated dashboard, group chat, notice board, gallery, and a comprehensive admin panel with A-Z control over all organization data.",
   "features": [
-    "Patriotic landing page with Bengali hero and BJCD branding",
-    "Advanced member registration with photo upload and visual robot verification",
-    "Member dashboard with profile card and PDF membership card download",
-    "Hierarchical committee directory (Convener → Members)",
-    "Real-time group chat with 3-second polling",
-    "Digital notice board, photo gallery, alumni, achievements, and information library",
-    "Admin panel with member approval, CRUD controls, and stats dashboard"
+    "Password-only admin panel login with full organizational control",
+    "Member registration with admin approval and digital signature",
+    "Premium animated user dashboard with member stats and grid",
+    "Group chat for all approved members",
+    "Site settings: change website name, center name, upazila, union",
+    "PDF membership certificate generation",
+    "Notice board, photo gallery, alumni, achievements, library sections",
+    "Member designation and ranking management"
   ],
-  "category": "organization",
+  "category": "organization-portal",
   "tags": [
-    "bangladesh",
-    "political-organization",
-    "student-portal",
     "chhatra-dal",
     "bnp",
-    "bjcd",
-    "bengali",
-    "member-management"
+    "political-organization",
+    "bangladesh",
+    "member-management",
+    "admin-panel"
   ],
-  "last_updated": "2026-05-12T22:12:54.900Z"
+  "last_updated": "2026-05-16T19:50:40.883Z"
 }

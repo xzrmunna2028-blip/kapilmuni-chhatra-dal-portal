@@ -213,6 +213,20 @@ module {
     items.size() < before;
   };
 
+  // --- Site Settings ---
+  public func getSiteSettings(
+    settings : { var siteSettings : CommonTypes.SiteSettings },
+  ) : CommonTypes.SiteSettings {
+    settings.siteSettings;
+  };
+
+  public func updateSiteSettings(
+    settings : { var siteSettings : CommonTypes.SiteSettings },
+    newSettings : CommonTypes.SiteSettings,
+  ) {
+    settings.siteSettings := newSettings;
+  };
+
   // --- Designations ---
   public func addDesignation(
     designations : List.List<CommonTypes.Designation>,

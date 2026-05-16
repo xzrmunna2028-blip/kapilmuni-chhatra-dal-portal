@@ -19,6 +19,7 @@ mixin (
     var nextAchievementId : Nat;
     var nextLibraryId : Nat;
     var nextDesignationId : Nat;
+    var siteSettings : CommonTypes.SiteSettings;
   },
 ) {
   // --- Notices ---
@@ -88,6 +89,15 @@ mixin (
 
   public shared func deleteLibraryItem(id : Nat) : async Bool {
     ContentLib.deleteLibraryItem(libraryItems, id)
+  };
+
+  // --- Site Settings ---
+  public query func getSiteSettings() : async CommonTypes.SiteSettings {
+    ContentLib.getSiteSettings(state)
+  };
+
+  public shared func updateSiteSettings(newSettings : CommonTypes.SiteSettings) : async () {
+    ContentLib.updateSiteSettings(state, newSettings)
   };
 
   // --- Designations ---

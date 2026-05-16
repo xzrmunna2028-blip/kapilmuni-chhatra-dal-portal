@@ -17,12 +17,14 @@ module {
       phone = payload.phone;
       email = payload.email;
       designation = payload.designation;
+      rank = 999;
       fullAddress = payload.fullAddress;
       joinReason = payload.joinReason;
       photoBlob = payload.photoBlob;
       status = #pending;
       rejectionReason = "";
       adminNotes = "";
+      adminSignature = null;
       registeredAt = Time.now();
       approvedAt = null;
     };
@@ -54,13 +56,14 @@ module {
     members : List.List<CommonTypes.Member>,
     id : CommonTypes.MemberId,
     now : CommonTypes.Timestamp,
+    adminSignature : ?Text,
   ) : Bool {
     var found = false;
     members.mapInPlace(
       func(m) {
         if (m.id == id) {
           found := true;
-          { m with status = #approved; approvedAt = ?now };
+          { m with status = #approved; approvedAt = ?now; adminSignature };
         } else { m };
       }
     );
@@ -120,6 +123,24 @@ module {
     members.clear();
     members.append(filtered);
     members.size() < before;
+  };
+
+  public func updateDesignation(
+    members : List.List<CommonTypes.Member>,
+    id : CommonTypes.MemberId,
+    newDesignation : Text,
+    newRank : Nat,
+  ) : Bool {
+    var found = false;
+    members.mapInPlace(
+      func(m) {
+        if (m.id == id) {
+          found := true;
+          { m with designation = newDesignation; rank = newRank };
+        } else { m };
+      }
+    );
+    found;
   };
 
   public func getStats(

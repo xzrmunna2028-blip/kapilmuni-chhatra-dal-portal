@@ -87,8 +87,10 @@ export interface Member {
   'id' : MemberId,
   'photoBlob' : ExternalBlob,
   'status' : MemberStatus,
+  'adminSignature' : [] | [string],
   'approvedAt' : [] | [Timestamp],
   'designation' : string,
+  'rank' : bigint,
   'rejectionReason' : string,
   'fullName' : string,
   'email' : string,
@@ -129,6 +131,13 @@ export interface SendMessagePayload {
   'text' : string,
   'senderPhotoUrl' : string,
   'senderName' : string,
+}
+export interface SiteSettings {
+  'adminSignature' : string,
+  'centerName' : string,
+  'siteName' : string,
+  'upazilaName' : string,
+  'unionName' : string,
 }
 export type Timestamp = bigint;
 export interface UpdateMemberPayload {
@@ -180,8 +189,8 @@ export interface _SERVICE {
   'addDesignation' : ActorMethod<[string, bigint], Designation>,
   'addGalleryPhoto' : ActorMethod<[CreateGalleryPhotoPayload], GalleryPhoto>,
   'addLibraryItem' : ActorMethod<[CreateLibraryItemPayload], LibraryItem>,
-  'adminLogin' : ActorMethod<[string, string], [] | [string]>,
-  'approveMember' : ActorMethod<[MemberId], boolean>,
+  'adminLogin' : ActorMethod<[string], [] | [string]>,
+  'approveMember' : ActorMethod<[MemberId, [] | [string]], boolean>,
   'archiveNotice' : ActorMethod<[bigint], boolean>,
   'assignCallerUserRole' : ActorMethod<[Principal, UserRole], undefined>,
   'createNotice' : ActorMethod<[CreateNoticePayload], Notice>,
@@ -198,6 +207,7 @@ export interface _SERVICE {
   'getMember' : ActorMethod<[MemberId], [] | [Member]>,
   'getMemberStats' : ActorMethod<[], MemberStats>,
   'getMyMemberProfile' : ActorMethod<[], [] | [Member]>,
+  'getSiteSettings' : ActorMethod<[], SiteSettings>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
   'listAchievements' : ActorMethod<[], Array<Achievement>>,
   'listAlumni' : ActorMethod<[], Array<AlumniRecord>>,
@@ -211,6 +221,8 @@ export interface _SERVICE {
   'rejectMember' : ActorMethod<[MemberId, string], boolean>,
   'sendChatMessage' : ActorMethod<[SendMessagePayload], ChatMessage>,
   'updateMember' : ActorMethod<[MemberId, UpdateMemberPayload], boolean>,
+  'updateMemberDesignation' : ActorMethod<[MemberId, string, bigint], boolean>,
+  'updateSiteSettings' : ActorMethod<[SiteSettings], undefined>,
   'validateAdminSession' : ActorMethod<[string], boolean>,
 }
 export declare const idlService: IDL.ServiceClass;

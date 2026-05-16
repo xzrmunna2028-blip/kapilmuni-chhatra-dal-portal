@@ -7,6 +7,8 @@ import MembersApi "mixins/members-api";
 import ChatApi "mixins/chat-api";
 import ContentApi "mixins/content-api";
 
+
+
 actor {
   // --- Authorization ---
   let accessControlState = AccessControl.initState();
@@ -29,7 +31,7 @@ actor {
   let libraryItems = List.empty<CommonTypes.LibraryItem>();
   let designations = List.empty<CommonTypes.Designation>();
 
-  // --- Counters & admin session (mutable, wrapped in record for mixin sharing) ---
+  // --- Counters, admin session & site settings (mutable, wrapped in record for mixin sharing) ---
   let state = {
     var nextMemberId : Nat = 1;
     var nextMessageId : Nat = 1;
@@ -40,6 +42,13 @@ actor {
     var nextLibraryId : Nat = 1;
     var nextDesignationId : Nat = 1;
     var adminSessionToken : Text = "";
+    var siteSettings : CommonTypes.SiteSettings = {
+      siteName = "২নং কপিলমুনি ইউনিয়ন ছাত্রদল পোর্টাল";
+      centerName = "কেন্দ্রীয় কমিটি";
+      upazilaName = "কয়রা";
+      unionName = "কপিলমুনি ইউনিয়ন";
+      adminSignature = "";
+    };
   };
 
   include MembersApi(accessControlState, members, state);

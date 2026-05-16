@@ -58,6 +58,7 @@ type MemberStatus__80880532 = {#approved; #pending; #rejected};
 type Member__248738349 =
   {
     adminNotes : Text;
+    adminSignature : ?Text;
     approvedAt : ?Timestamp__301639476;
     designation : Text;
     email : Text;
@@ -67,6 +68,7 @@ type Member__248738349 =
     joinReason : Text;
     phone : Text;
     photoBlob : ExternalBlob__671167343;
+    rank : Nat;
     registeredAt : Timestamp__301639476;
     rejectionReason : Text;
     status : MemberStatus__80880532
@@ -83,6 +85,14 @@ type Notice__697516538 =
     date : Timestamp__301639476;
     id : Nat;
     title : Text
+  };
+type SiteSettings__552206447 =
+  {
+    adminSignature : Text;
+    centerName : Text;
+    siteName : Text;
+    unionName : Text;
+    upazilaName : Text
   };
 type Timestamp__301639476 = Int;
 type UserRole__1073662873 = {#admin; #guest; #user};
@@ -150,6 +160,7 @@ actor {
       var nextMemberId : Nat;
       var nextMessageId : Nat;
       var nextNoticeId : Nat;
-      var nextPhotoId : Nat
+      var nextPhotoId : Nat;
+      var siteSettings : SiteSettings__552206447
     }
 };

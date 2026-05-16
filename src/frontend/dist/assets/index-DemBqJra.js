@@ -2088,14 +2088,14 @@ function iexp2(n2) {
 function eob() {
   throw new Error("unexpected end of buffer");
 }
-function safeRead(pipe2, num) {
-  if (pipe2.byteLength < num) {
+function safeRead(pipe, num) {
+  if (pipe.byteLength < num) {
     eob();
   }
-  return pipe2.read(num);
+  return pipe.read(num);
 }
-function safeReadUint8(pipe2) {
-  const byte = pipe2.readUint8();
+function safeReadUint8(pipe) {
+  const byte = pipe.readUint8();
   if (byte === void 0) {
     eob();
   }
@@ -2109,25 +2109,25 @@ function lebEncode(value) {
     throw new Error("Cannot leb encode negative values.");
   }
   const byteLength = (value === BigInt(0) ? 0 : ilog2(value)) + 1;
-  const pipe2 = new PipeArrayBuffer(new Uint8Array(byteLength), 0);
+  const pipe = new PipeArrayBuffer(new Uint8Array(byteLength), 0);
   while (true) {
     const i2 = Number(value & BigInt(127));
     value /= BigInt(128);
     if (value === BigInt(0)) {
-      pipe2.write(new Uint8Array([i2]));
+      pipe.write(new Uint8Array([i2]));
       break;
     } else {
-      pipe2.write(new Uint8Array([i2 | 128]));
+      pipe.write(new Uint8Array([i2 | 128]));
     }
   }
-  return pipe2.buffer;
+  return pipe.buffer;
 }
-function lebDecode(pipe2) {
+function lebDecode(pipe) {
   let weight = BigInt(1);
   let value = BigInt(0);
   let byte;
   do {
-    byte = safeReadUint8(pipe2);
+    byte = safeReadUint8(pipe);
     value += BigInt(byte & 127).valueOf() * weight;
     weight *= BigInt(128);
   } while (byte >= 128);
@@ -2142,15 +2142,15 @@ function slebEncode(value) {
     value = -value - BigInt(1);
   }
   const byteLength = (value === BigInt(0) ? 0 : ilog2(value)) + 1;
-  const pipe2 = new PipeArrayBuffer(new Uint8Array(byteLength), 0);
+  const pipe = new PipeArrayBuffer(new Uint8Array(byteLength), 0);
   while (true) {
     const i2 = getLowerBytes(value);
     value /= BigInt(128);
     if (isNeg && value === BigInt(0) && (i2 & 64) !== 0 || !isNeg && value === BigInt(0) && (i2 & 64) === 0) {
-      pipe2.write(new Uint8Array([i2]));
+      pipe.write(new Uint8Array([i2]));
       break;
     } else {
-      pipe2.write(new Uint8Array([i2 | 128]));
+      pipe.write(new Uint8Array([i2 | 128]));
     }
   }
   function getLowerBytes(num) {
@@ -2161,20 +2161,20 @@ function slebEncode(value) {
       return Number(bytes);
     }
   }
-  return pipe2.buffer;
+  return pipe.buffer;
 }
-function slebDecode(pipe2) {
-  const pipeView = new Uint8Array(pipe2.buffer);
+function slebDecode(pipe) {
+  const pipeView = new Uint8Array(pipe.buffer);
   let len = 0;
   for (; len < pipeView.byteLength; len++) {
     if (pipeView[len] < 128) {
       if ((pipeView[len] & 64) === 0) {
-        return lebDecode(pipe2);
+        return lebDecode(pipe);
       }
       break;
     }
   }
-  const bytes = new Uint8Array(safeRead(pipe2, len + 1));
+  const bytes = new Uint8Array(safeRead(pipe, len + 1));
   let value = BigInt(0);
   for (let i2 = bytes.byteLength - 1; i2 >= 0; i2--) {
     value = value * BigInt(128) + BigInt(128 - (bytes[i2] & 127) - 1);
@@ -2189,41 +2189,41 @@ function writeUIntLE(value, byteLength) {
 }
 function writeIntLE(value, byteLength) {
   value = BigInt(value);
-  const pipe2 = new PipeArrayBuffer(new Uint8Array(Math.min(1, byteLength)), 0);
+  const pipe = new PipeArrayBuffer(new Uint8Array(Math.min(1, byteLength)), 0);
   let i2 = 0;
   let mul = BigInt(256);
   let sub = BigInt(0);
   let byte = Number(value % mul);
-  pipe2.write(new Uint8Array([byte]));
+  pipe.write(new Uint8Array([byte]));
   while (++i2 < byteLength) {
     if (value < 0 && sub === BigInt(0) && byte !== 0) {
       sub = BigInt(1);
     }
     byte = Number((value / mul - sub) % BigInt(256));
-    pipe2.write(new Uint8Array([byte]));
+    pipe.write(new Uint8Array([byte]));
     mul *= BigInt(256);
   }
-  return pipe2.buffer;
+  return pipe.buffer;
 }
-function readUIntLE(pipe2, byteLength) {
+function readUIntLE(pipe, byteLength) {
   if (byteLength <= 0 || !Number.isInteger(byteLength)) {
     throw new Error("Byte length must be a positive integer");
   }
-  let val = BigInt(safeReadUint8(pipe2));
+  let val = BigInt(safeReadUint8(pipe));
   let mul = BigInt(1);
   let i2 = 0;
   while (++i2 < byteLength) {
     mul *= BigInt(256);
-    const byte = BigInt(safeReadUint8(pipe2));
+    const byte = BigInt(safeReadUint8(pipe));
     val = val + mul * byte;
   }
   return val;
 }
-function readIntLE(pipe2, byteLength) {
+function readIntLE(pipe, byteLength) {
   if (byteLength <= 0 || !Number.isInteger(byteLength)) {
     throw new Error("Byte length must be a positive integer");
   }
-  let val = readUIntLE(pipe2, byteLength);
+  let val = readUIntLE(pipe, byteLength);
   const mul = BigInt(2) ** (BigInt(8) * BigInt(byteLength - 1) + BigInt(7));
   if (val >= mul) {
     val -= mul * BigInt(2);
@@ -3711,25 +3711,25 @@ function decode$3(retTypes, bytes) {
   if (magic !== magicNumber) {
     throw new Error("Wrong magic number: " + JSON.stringify(magic));
   }
-  function readTypeTable(pipe2) {
+  function readTypeTable(pipe) {
     const typeTable = [];
-    const len = Number(lebDecode(pipe2));
+    const len = Number(lebDecode(pipe));
     for (let i2 = 0; i2 < len; i2++) {
-      const ty = Number(slebDecode(pipe2));
+      const ty = Number(slebDecode(pipe));
       switch (ty) {
         case IDLTypeIds.Opt:
         case IDLTypeIds.Vector: {
-          const t3 = Number(slebDecode(pipe2));
+          const t3 = Number(slebDecode(pipe));
           typeTable.push([ty, t3]);
           break;
         }
         case IDLTypeIds.Record:
         case IDLTypeIds.Variant: {
           const fields = [];
-          let objectLength = Number(lebDecode(pipe2));
+          let objectLength = Number(lebDecode(pipe));
           let prevHash;
           while (objectLength--) {
-            const hash = Number(lebDecode(pipe2));
+            const hash = Number(lebDecode(pipe));
             if (hash >= Math.pow(2, 32)) {
               throw new Error("field id out of 32-bit range");
             }
@@ -3737,7 +3737,7 @@ function decode$3(retTypes, bytes) {
               throw new Error("field id collision or not sorted");
             }
             prevHash = hash;
-            const t3 = Number(slebDecode(pipe2));
+            const t3 = Number(slebDecode(pipe));
             fields.push([hash, t3]);
           }
           typeTable.push([ty, fields]);
@@ -3745,19 +3745,19 @@ function decode$3(retTypes, bytes) {
         }
         case IDLTypeIds.Func: {
           const args = [];
-          let argLength = Number(lebDecode(pipe2));
+          let argLength = Number(lebDecode(pipe));
           while (argLength--) {
-            args.push(Number(slebDecode(pipe2)));
+            args.push(Number(slebDecode(pipe)));
           }
           const returnValues = [];
-          let returnValuesLength = Number(lebDecode(pipe2));
+          let returnValuesLength = Number(lebDecode(pipe));
           while (returnValuesLength--) {
-            returnValues.push(Number(slebDecode(pipe2)));
+            returnValues.push(Number(slebDecode(pipe)));
           }
           const annotations = [];
-          let annotationLength = Number(lebDecode(pipe2));
+          let annotationLength = Number(lebDecode(pipe));
           while (annotationLength--) {
-            const annotation = Number(lebDecode(pipe2));
+            const annotation = Number(lebDecode(pipe));
             switch (annotation) {
               case 1: {
                 annotations.push("query");
@@ -3779,12 +3779,12 @@ function decode$3(retTypes, bytes) {
           break;
         }
         case IDLTypeIds.Service: {
-          let servLength = Number(lebDecode(pipe2));
+          let servLength = Number(lebDecode(pipe));
           const methods = [];
           while (servLength--) {
-            const nameLength = Number(lebDecode(pipe2));
-            const funcName = new TextDecoder().decode(safeRead(pipe2, nameLength));
-            const funcType = slebDecode(pipe2);
+            const nameLength = Number(lebDecode(pipe));
+            const funcName = new TextDecoder().decode(safeRead(pipe, nameLength));
+            const funcType = slebDecode(pipe);
             methods.push([funcName, funcType]);
           }
           typeTable.push([ty, methods]);
@@ -3795,9 +3795,9 @@ function decode$3(retTypes, bytes) {
       }
     }
     const rawList = [];
-    const length = Number(lebDecode(pipe2));
+    const length = Number(lebDecode(pipe));
     for (let i2 = 0; i2 < length; i2++) {
-      rawList.push(Number(slebDecode(pipe2)));
+      rawList.push(Number(slebDecode(pipe)));
     }
     return [typeTable, rawList];
   }
@@ -5227,13 +5227,13 @@ function calcWOpts(W2, scalarBits) {
   const windows = Math.ceil(scalarBits / W2) + 1;
   const windowSize = 2 ** (W2 - 1);
   const maxNumber = 2 ** W2;
-  const mask2 = bitMask(W2);
+  const mask = bitMask(W2);
   const shiftBy = BigInt(W2);
-  return { windows, windowSize, mask: mask2, maxNumber, shiftBy };
+  return { windows, windowSize, mask, maxNumber, shiftBy };
 }
 function calcOffsets(n2, window2, wOpts) {
-  const { windowSize, mask: mask2, maxNumber, shiftBy } = wOpts;
-  let wbits2 = Number(n2 & mask2);
+  const { windowSize, mask, maxNumber, shiftBy } = wOpts;
+  let wbits2 = Number(n2 & mask);
   let nextN = n2 >> shiftBy;
   if (wbits2 > windowSize) {
     wbits2 -= maxNumber;
@@ -7393,21 +7393,21 @@ const bls12_381_CURVE_G2 = {
 const COMPZERO = setMask(Fp$1.toBytes(_0n$1), { infinity: true, compressed: true });
 function parseMask(bytes) {
   bytes = bytes.slice();
-  const mask2 = bytes[0] & 224;
-  const compressed = !!(mask2 >> 7 & 1);
-  const infinity = !!(mask2 >> 6 & 1);
-  const sort = !!(mask2 >> 5 & 1);
+  const mask = bytes[0] & 224;
+  const compressed = !!(mask >> 7 & 1);
+  const infinity = !!(mask >> 6 & 1);
+  const sort = !!(mask >> 5 & 1);
   bytes[0] &= 31;
   return { compressed, infinity, sort, value: bytes };
 }
-function setMask(bytes, mask2) {
+function setMask(bytes, mask) {
   if (bytes[0] & 224)
     throw new Error("setMask: non-empty mask");
-  if (mask2.compressed)
+  if (mask.compressed)
     bytes[0] |= 128;
-  if (mask2.infinity)
+  if (mask.infinity)
     bytes[0] |= 64;
-  if (mask2.sort)
+  if (mask.sort)
     bytes[0] |= 32;
   return bytes;
 }
@@ -9349,10 +9349,10 @@ class Observable {
     this.observers.push(func);
   }
   unsubscribe(func) {
-    this.observers = this.observers.filter((observer2) => observer2 !== func);
+    this.observers = this.observers.filter((observer) => observer !== func);
   }
   notify(data, ...rest) {
-    this.observers.forEach((observer2) => observer2(data, ...rest));
+    this.observers.forEach((observer) => observer(data, ...rest));
   }
 }
 class ObservableLog extends Observable {
@@ -9727,14 +9727,14 @@ const _HttpAgent = class _HttpAgent {
    */
   async call(canisterId, options, identity3) {
     const callSync = options.callSync ?? true;
-    const id2 = await (identity3 ?? __privateGet(this, _identity));
-    if (!id2) {
+    const id = await (identity3 ?? __privateGet(this, _identity));
+    if (!id) {
       throw ExternalError.fromCode(new IdentityInvalidErrorCode());
     }
     const canister = Principal$1.from(canisterId);
     const ecid = options.effectiveCanisterId ? Principal$1.from(options.effectiveCanisterId) : canister;
     await __privateMethod(this, _HttpAgent_instances, asyncGuard_fn).call(this, ecid);
-    const sender = id2.getPrincipal();
+    const sender = id.getPrincipal();
     const ingress_expiry = calculateIngressExpiry(__privateGet(this, _maxIngressExpiryInMinutes), __privateGet(this, _timeDiffMsecs));
     const submit = {
       request_type: SubmitRequestType.Call,
@@ -9768,7 +9768,7 @@ const _HttpAgent = class _HttpAgent {
     function toNonce(buf) {
       return Object.assign(buf, { __nonce__: void 0 });
     }
-    transformedRequest = await id2.transformRequest(transformedRequest);
+    transformedRequest = await id.transformRequest(transformedRequest);
     const body = encode$2(transformedRequest.body);
     const backoff2 = __privateGet(this, _backoffStrategy).call(this);
     const requestId = requestIdOf(submit);
@@ -9840,12 +9840,12 @@ const _HttpAgent = class _HttpAgent {
     this.log.print(`ecid ${ecid.toString()}`);
     this.log.print(`canisterId ${canisterId.toString()}`);
     let transformedRequest;
-    const id2 = await (identity3 ?? __privateGet(this, _identity));
-    if (!id2) {
+    const id = await (identity3 ?? __privateGet(this, _identity));
+    if (!id) {
       throw ExternalError.fromCode(new IdentityInvalidErrorCode());
     }
     const canister = Principal$1.from(canisterId);
-    const sender = id2.getPrincipal();
+    const sender = id.getPrincipal();
     const ingressExpiry = calculateIngressExpiry(__privateGet(this, _maxIngressExpiryInMinutes), __privateGet(this, _timeDiffMsecs));
     const request2 = {
       request_type: ReadRequestType.Query,
@@ -9867,7 +9867,7 @@ const _HttpAgent = class _HttpAgent {
       endpoint: Endpoint.Query,
       body: request2
     });
-    transformedRequest = await id2.transformRequest(transformedRequest);
+    transformedRequest = await id.transformRequest(transformedRequest);
     const body = encode$2(transformedRequest.body);
     const args = {
       canister: canister.toText(),
@@ -9929,11 +9929,11 @@ const _HttpAgent = class _HttpAgent {
   }
   async createReadStateRequest(fields, identity3) {
     await __privateMethod(this, _HttpAgent_instances, asyncGuard_fn).call(this);
-    const id2 = await (identity3 ?? __privateGet(this, _identity));
-    if (!id2) {
+    const id = await (identity3 ?? __privateGet(this, _identity));
+    if (!id) {
       throw ExternalError.fromCode(new IdentityInvalidErrorCode());
     }
-    const sender = id2.getPrincipal();
+    const sender = id.getPrincipal();
     const transformedRequest = await this._transform({
       request: {
         method: "POST",
@@ -9950,7 +9950,7 @@ const _HttpAgent = class _HttpAgent {
         ingress_expiry: calculateIngressExpiry(__privateGet(this, _maxIngressExpiryInMinutes), __privateGet(this, _timeDiffMsecs))
       }
     });
-    return id2.transformRequest(transformedRequest);
+    return id.transformRequest(transformedRequest);
   }
   async readState(canisterId, fields, _identity2, request2) {
     await __privateMethod(this, _HttpAgent_instances, rootKeyGuard_fn).call(this);
@@ -10187,17 +10187,17 @@ _verifyQuerySignatures = new WeakMap();
 requestAndRetryQuery_fn = async function(args) {
   var _a3, _b3;
   const { ecid, transformedRequest, body, requestId, backoff: backoff2, tries } = args;
-  const delay2 = tries === 0 ? 0 : backoff2.next();
+  const delay = tries === 0 ? 0 : backoff2.next();
   this.log.print(`fetching "/api/v2/canister/${ecid.toString()}/query" with tries:`, {
     tries,
     backoff: backoff2,
-    delay: delay2
+    delay
   });
-  if (delay2 === null) {
+  if (delay === null) {
     throw UnknownError.fromCode(new TimeoutWaitingForResponseErrorCode(`Backoff strategy exhausted after ${tries} attempts.`, requestId));
   }
-  if (delay2 > 0) {
-    await new Promise((resolve) => setTimeout(resolve, delay2));
+  if (delay > 0) {
+    await new Promise((resolve) => setTimeout(resolve, delay));
   }
   let response;
   try {
@@ -10257,12 +10257,12 @@ requestAndRetryQuery_fn = async function(args) {
 };
 requestAndRetry_fn = async function(args) {
   const { requestFn, backoff: backoff2, tries } = args;
-  const delay2 = tries === 0 ? 0 : backoff2.next();
-  if (delay2 === null) {
+  const delay = tries === 0 ? 0 : backoff2.next();
+  if (delay === null) {
     throw ProtocolError.fromCode(new TimeoutWaitingForResponseErrorCode(`Retry strategy exhausted after ${tries} attempts.`));
   }
-  if (delay2 > 0) {
-    await new Promise((resolve) => setTimeout(resolve, delay2));
+  if (delay > 0) {
+    await new Promise((resolve) => setTimeout(resolve, delay));
   }
   let response;
   let responseBodyBytes = new Uint8Array();
@@ -10786,9 +10786,9 @@ async function withRetry(operation) {
         }
         throw error;
       }
-      const delay2 = Math.min(BASE_DELAY_MS * 2 ** attempt + Math.random() * 1e3, MAX_DELAY_MS);
-      console.warn(`Request failed (attempt ${attempt + 1}/${MAX_RETRIES + 1}): ${lastError.message}. Retrying in ${Math.round(delay2)}ms...`);
-      await new Promise((resolve) => setTimeout(resolve, delay2));
+      const delay = Math.min(BASE_DELAY_MS * 2 ** attempt + Math.random() * 1e3, MAX_DELAY_MS);
+      console.warn(`Request failed (attempt ${attempt + 1}/${MAX_RETRIES + 1}): ${lastError.message}. Retrying in ${Math.round(delay)}ms...`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
   throw lastError || new Error("Unknown error occurred during retry attempts");
@@ -11335,9 +11335,9 @@ var defaultTimeoutProvider = {
   // replace the global setTimeout (like tests) won't work since we'll already
   // have a hard reference to the original implementation at the time when this
   // file was imported.
-  setTimeout: (callback, delay2) => setTimeout(callback, delay2),
+  setTimeout: (callback, delay) => setTimeout(callback, delay),
   clearTimeout: (timeoutId) => clearTimeout(timeoutId),
-  setInterval: (callback, delay2) => setInterval(callback, delay2),
+  setInterval: (callback, delay) => setInterval(callback, delay),
   clearInterval: (intervalId) => clearInterval(intervalId)
 };
 var TimeoutManager = (_c = class {
@@ -11355,14 +11355,14 @@ var TimeoutManager = (_c = class {
   setTimeoutProvider(provider) {
     __privateSet(this, _provider, provider);
   }
-  setTimeout(callback, delay2) {
-    return __privateGet(this, _provider).setTimeout(callback, delay2);
+  setTimeout(callback, delay) {
+    return __privateGet(this, _provider).setTimeout(callback, delay);
   }
   clearTimeout(timeoutId) {
     __privateGet(this, _provider).clearTimeout(timeoutId);
   }
-  setInterval(callback, delay2) {
-    return __privateGet(this, _provider).setInterval(callback, delay2);
+  setInterval(callback, delay) {
+    return __privateGet(this, _provider).setInterval(callback, delay);
   }
   clearInterval(intervalId) {
     __privateGet(this, _provider).clearInterval(intervalId);
@@ -11863,7 +11863,7 @@ function createRetryer(config2) {
       }
       const retry = config2.retry ?? (environmentManager.isServer() ? 0 : 3);
       const retryDelay = config2.retryDelay ?? defaultRetryDelay;
-      const delay2 = typeof retryDelay === "function" ? retryDelay(failureCount, error) : retryDelay;
+      const delay = typeof retryDelay === "function" ? retryDelay(failureCount, error) : retryDelay;
       const shouldRetry = retry === true || typeof retry === "number" && failureCount < retry || typeof retry === "function" && retry(failureCount, error);
       if (isRetryCancelled || !shouldRetry) {
         reject(error);
@@ -11871,7 +11871,7 @@ function createRetryer(config2) {
       }
       failureCount++;
       (_a3 = config2.onFail) == null ? void 0 : _a3.call(config2, failureCount, error);
-      sleep(delay2).then(() => {
+      sleep(delay).then(() => {
         return canContinue() ? void 0 : pause();
       }).then(() => {
         if (isRetryCancelled) {
@@ -12011,7 +12011,7 @@ var Query = (_f = class extends Removable {
   }
   isActive() {
     return this.observers.some(
-      (observer2) => resolveEnabled(observer2.options.enabled, this) !== false
+      (observer) => resolveEnabled(observer.options.enabled, this) !== false
     );
   }
   isDisabled() {
@@ -12026,7 +12026,7 @@ var Query = (_f = class extends Removable {
   isStatic() {
     if (this.getObserversCount() > 0) {
       return this.observers.some(
-        (observer2) => resolveStaleTime(observer2.options.staleTime, this) === "static"
+        (observer) => resolveStaleTime(observer.options.staleTime, this) === "static"
       );
     }
     return false;
@@ -12034,7 +12034,7 @@ var Query = (_f = class extends Removable {
   isStale() {
     if (this.getObserversCount() > 0) {
       return this.observers.some(
-        (observer2) => observer2.getCurrentResult().isStale
+        (observer) => observer.getCurrentResult().isStale
       );
     }
     return this.state.data === void 0 || this.state.isInvalidated;
@@ -12053,26 +12053,26 @@ var Query = (_f = class extends Removable {
   }
   onFocus() {
     var _a3;
-    const observer2 = this.observers.find((x3) => x3.shouldFetchOnWindowFocus());
-    observer2 == null ? void 0 : observer2.refetch({ cancelRefetch: false });
+    const observer = this.observers.find((x3) => x3.shouldFetchOnWindowFocus());
+    observer == null ? void 0 : observer.refetch({ cancelRefetch: false });
     (_a3 = __privateGet(this, _retryer)) == null ? void 0 : _a3.continue();
   }
   onOnline() {
     var _a3;
-    const observer2 = this.observers.find((x3) => x3.shouldFetchOnReconnect());
-    observer2 == null ? void 0 : observer2.refetch({ cancelRefetch: false });
+    const observer = this.observers.find((x3) => x3.shouldFetchOnReconnect());
+    observer == null ? void 0 : observer.refetch({ cancelRefetch: false });
     (_a3 = __privateGet(this, _retryer)) == null ? void 0 : _a3.continue();
   }
-  addObserver(observer2) {
-    if (!this.observers.includes(observer2)) {
-      this.observers.push(observer2);
+  addObserver(observer) {
+    if (!this.observers.includes(observer)) {
+      this.observers.push(observer);
       this.clearGcTimeout();
-      __privateGet(this, _cache).notify({ type: "observerAdded", query: this, observer: observer2 });
+      __privateGet(this, _cache).notify({ type: "observerAdded", query: this, observer });
     }
   }
-  removeObserver(observer2) {
-    if (this.observers.includes(observer2)) {
-      this.observers = this.observers.filter((x3) => x3 !== observer2);
+  removeObserver(observer) {
+    if (this.observers.includes(observer)) {
+      this.observers = this.observers.filter((x3) => x3 !== observer);
       if (!this.observers.length) {
         if (__privateGet(this, _retryer)) {
           if (__privateGet(this, _abortSignalConsumed) || __privateMethod(this, _Query_instances, isInitialPausedFetch_fn).call(this)) {
@@ -12083,7 +12083,7 @@ var Query = (_f = class extends Removable {
         }
         this.scheduleGc();
       }
-      __privateGet(this, _cache).notify({ type: "observerRemoved", query: this, observer: observer2 });
+      __privateGet(this, _cache).notify({ type: "observerRemoved", query: this, observer });
     }
   }
   getObserversCount() {
@@ -12111,9 +12111,9 @@ var Query = (_f = class extends Removable {
       this.setOptions(options);
     }
     if (!this.options.queryFn) {
-      const observer2 = this.observers.find((x3) => x3.options.queryFn);
-      if (observer2) {
-        this.setOptions(observer2.options);
+      const observer = this.observers.find((x3) => x3.options.queryFn);
+      if (observer) {
+        this.setOptions(observer.options);
       }
     }
     const abortController = new AbortController();
@@ -12307,8 +12307,8 @@ var Query = (_f = class extends Removable {
   };
   this.state = reducer(this.state);
   notifyManager.batch(() => {
-    this.observers.forEach((observer2) => {
-      observer2.onQueryUpdate();
+    this.observers.forEach((observer) => {
+      observer.onQueryUpdate();
     });
     __privateGet(this, _cache).notify({ query: this, type: "updated", action });
   });
@@ -12790,8 +12790,8 @@ function shouldFetchOptionally(query, prevQuery, options, prevOptions) {
 function isStale(query, options) {
   return resolveEnabled(options.enabled, query) !== false && query.isStaleByTime(resolveStaleTime(options.staleTime, query));
 }
-function shouldAssignObserverCurrentProperties(observer2, optimisticResult) {
-  if (!shallowEqualObjects(observer2.getCurrentResult(), optimisticResult)) {
+function shouldAssignObserverCurrentProperties(observer, optimisticResult) {
+  if (!shallowEqualObjects(observer.getCurrentResult(), optimisticResult)) {
     return true;
   }
   return false;
@@ -12922,24 +12922,24 @@ var Mutation = (_h = class extends Removable {
   get meta() {
     return this.options.meta;
   }
-  addObserver(observer2) {
-    if (!__privateGet(this, _observers).includes(observer2)) {
-      __privateGet(this, _observers).push(observer2);
+  addObserver(observer) {
+    if (!__privateGet(this, _observers).includes(observer)) {
+      __privateGet(this, _observers).push(observer);
       this.clearGcTimeout();
       __privateGet(this, _mutationCache).notify({
         type: "observerAdded",
         mutation: this,
-        observer: observer2
+        observer
       });
     }
   }
-  removeObserver(observer2) {
-    __privateSet(this, _observers, __privateGet(this, _observers).filter((x3) => x3 !== observer2));
+  removeObserver(observer) {
+    __privateSet(this, _observers, __privateGet(this, _observers).filter((x3) => x3 !== observer));
     this.scheduleGc();
     __privateGet(this, _mutationCache).notify({
       type: "observerRemoved",
       mutation: this,
-      observer: observer2
+      observer
     });
   }
   optionalRemove() {
@@ -13159,8 +13159,8 @@ var Mutation = (_h = class extends Removable {
   };
   this.state = reducer(this.state);
   notifyManager.batch(() => {
-    __privateGet(this, _observers).forEach((observer2) => {
-      observer2.onMutationUpdate(action);
+    __privateGet(this, _observers).forEach((observer) => {
+      observer.onMutationUpdate(action);
     });
     __privateGet(this, _mutationCache).notify({
       mutation: this,
@@ -14325,9 +14325,9 @@ var getHasError = ({
 var ensureSuspenseTimers = (defaultedOptions) => {
   if (defaultedOptions.suspense) {
     const MIN_SUSPENSE_TIME_MS = 1e3;
-    const clamp2 = (value) => value === "static" ? value : Math.max(value ?? MIN_SUSPENSE_TIME_MS, MIN_SUSPENSE_TIME_MS);
+    const clamp = (value) => value === "static" ? value : Math.max(value ?? MIN_SUSPENSE_TIME_MS, MIN_SUSPENSE_TIME_MS);
     const originalStaleTime = defaultedOptions.staleTime;
-    defaultedOptions.staleTime = typeof originalStaleTime === "function" ? (...args) => clamp2(originalStaleTime(...args)) : clamp2(originalStaleTime);
+    defaultedOptions.staleTime = typeof originalStaleTime === "function" ? (...args) => clamp(originalStaleTime(...args)) : clamp(originalStaleTime);
     if (typeof defaultedOptions.gcTime === "number") {
       defaultedOptions.gcTime = Math.max(
         defaultedOptions.gcTime,
@@ -14338,7 +14338,7 @@ var ensureSuspenseTimers = (defaultedOptions) => {
 };
 var willFetch = (result, isRestoring) => result.isLoading && result.isFetching && !isRestoring;
 var shouldSuspend = (defaultedOptions, result) => (defaultedOptions == null ? void 0 : defaultedOptions.suspense) && result.isPending;
-var fetchOptimistic = (defaultedOptions, observer2, errorResetBoundary) => observer2.fetchOptimistic(defaultedOptions).catch(() => {
+var fetchOptimistic = (defaultedOptions, observer, errorResetBoundary) => observer.fetchOptimistic(defaultedOptions).catch(() => {
   errorResetBoundary.clearReset();
 });
 function useBaseQuery(options, Observer, queryClient2) {
@@ -14357,31 +14357,31 @@ function useBaseQuery(options, Observer, queryClient2) {
   ensurePreventErrorBoundaryRetry(defaultedOptions, errorResetBoundary, query);
   useClearResetErrorBoundary(errorResetBoundary);
   const isNewCacheEntry = !client2.getQueryCache().get(defaultedOptions.queryHash);
-  const [observer2] = reactExports.useState(
+  const [observer] = reactExports.useState(
     () => new Observer(
       client2,
       defaultedOptions
     )
   );
-  const result = observer2.getOptimisticResult(defaultedOptions);
+  const result = observer.getOptimisticResult(defaultedOptions);
   const shouldSubscribe = !isRestoring && options.subscribed !== false;
   reactExports.useSyncExternalStore(
     reactExports.useCallback(
       (onStoreChange) => {
-        const unsubscribe = shouldSubscribe ? observer2.subscribe(notifyManager.batchCalls(onStoreChange)) : noop$7;
-        observer2.updateResult();
+        const unsubscribe = shouldSubscribe ? observer.subscribe(notifyManager.batchCalls(onStoreChange)) : noop$7;
+        observer.updateResult();
         return unsubscribe;
       },
-      [observer2, shouldSubscribe]
+      [observer, shouldSubscribe]
     ),
-    () => observer2.getCurrentResult(),
-    () => observer2.getCurrentResult()
+    () => observer.getCurrentResult(),
+    () => observer.getCurrentResult()
   );
   reactExports.useEffect(() => {
-    observer2.setOptions(defaultedOptions);
-  }, [defaultedOptions, observer2]);
+    observer.setOptions(defaultedOptions);
+  }, [defaultedOptions, observer]);
   if (shouldSuspend(defaultedOptions, result)) {
-    throw fetchOptimistic(defaultedOptions, observer2, errorResetBoundary);
+    throw fetchOptimistic(defaultedOptions, observer, errorResetBoundary);
   }
   if (getHasError({
     result,
@@ -14400,51 +14400,51 @@ function useBaseQuery(options, Observer, queryClient2) {
   if (defaultedOptions.experimental_prefetchInRender && !environmentManager.isServer() && willFetch(result, isRestoring)) {
     const promise = isNewCacheEntry ? (
       // Fetch immediately on render in order to ensure `.promise` is resolved even if the component is unmounted
-      fetchOptimistic(defaultedOptions, observer2, errorResetBoundary)
+      fetchOptimistic(defaultedOptions, observer, errorResetBoundary)
     ) : (
       // subscribe to the "cache promise" so that we can finalize the currentThenable once data comes in
       query == null ? void 0 : query.promise
     );
     promise == null ? void 0 : promise.catch(noop$7).finally(() => {
-      observer2.updateResult();
+      observer.updateResult();
     });
   }
-  return !defaultedOptions.notifyOnChangeProps ? observer2.trackResult(result) : result;
+  return !defaultedOptions.notifyOnChangeProps ? observer.trackResult(result) : result;
 }
 function useQuery(options, queryClient2) {
   return useBaseQuery(options, QueryObserver);
 }
 function useMutation(options, queryClient2) {
   const client2 = useQueryClient();
-  const [observer2] = reactExports.useState(
+  const [observer] = reactExports.useState(
     () => new MutationObserver$1(
       client2,
       options
     )
   );
   reactExports.useEffect(() => {
-    observer2.setOptions(options);
-  }, [observer2, options]);
+    observer.setOptions(options);
+  }, [observer, options]);
   const result = reactExports.useSyncExternalStore(
     reactExports.useCallback(
-      (onStoreChange) => observer2.subscribe(notifyManager.batchCalls(onStoreChange)),
-      [observer2]
+      (onStoreChange) => observer.subscribe(notifyManager.batchCalls(onStoreChange)),
+      [observer]
     ),
-    () => observer2.getCurrentResult(),
-    () => observer2.getCurrentResult()
+    () => observer.getCurrentResult(),
+    () => observer.getCurrentResult()
   );
   const mutate = reactExports.useCallback(
     (variables, mutateOptions) => {
-      observer2.mutate(variables, mutateOptions).catch(noop$7);
+      observer.mutate(variables, mutateOptions).catch(noop$7);
     },
-    [observer2]
+    [observer]
   );
-  if (result.error && shouldThrowError(observer2.options.throwOnError, [result.error])) {
+  if (result.error && shouldThrowError(observer.options.throwOnError, [result.error])) {
     throw result.error;
   }
   return { ...result, mutate, mutateAsync: result.mutate };
 }
-function isObject$b(value) {
+function isObject$a(value) {
   return value !== null && typeof value === "object";
 }
 const _Ed25519PublicKey = class _Ed25519PublicKey {
@@ -14467,9 +14467,9 @@ const _Ed25519PublicKey = class _Ed25519PublicKey {
     if (typeof maybeKey === "string") {
       const key = hexToBytes(maybeKey);
       return this.fromRaw(key);
-    } else if (isObject$b(maybeKey)) {
+    } else if (isObject$a(maybeKey)) {
       const key = maybeKey;
-      if (isObject$b(key) && Object.hasOwnProperty.call(key, "__derEncodedPublicKey__")) {
+      if (isObject$a(key) && Object.hasOwnProperty.call(key, "__derEncodedPublicKey__")) {
         return this.fromDer(key);
       } else if (ArrayBuffer.isView(key)) {
         const view = key;
@@ -15292,7 +15292,7 @@ replaceTraps((oldTraps) => ({
 const AUTH_DB_NAME = "auth-client-db";
 const OBJECT_STORE_NAME = "ic-keyval";
 const _openDbStore = async (dbName = AUTH_DB_NAME, storeName = OBJECT_STORE_NAME, version) => {
-  if (isBrowser$2 && (localStorage == null ? void 0 : localStorage.getItem(KEY_STORAGE_DELEGATION))) {
+  if (isBrowser && (localStorage == null ? void 0 : localStorage.getItem(KEY_STORAGE_DELEGATION))) {
     localStorage.removeItem(KEY_STORAGE_DELEGATION);
     localStorage.removeItem(KEY_STORAGE_KEY);
   }
@@ -15368,7 +15368,7 @@ const KEY_STORAGE_KEY = "identity";
 const KEY_STORAGE_DELEGATION = "delegation";
 const KEY_VECTOR = "iv";
 const DB_VERSION = 1;
-const isBrowser$2 = typeof window !== "undefined";
+const isBrowser = typeof window !== "undefined";
 class LocalStorage {
   constructor(prefix2 = "ic-", _localStorage) {
     __publicField(this, "prefix");
@@ -15499,7 +15499,7 @@ class AuthClient {
       key = options.identity;
     } else {
       let maybeIdentityStorage = await storage.get(KEY_STORAGE_KEY);
-      if (!maybeIdentityStorage && isBrowser$2) {
+      if (!maybeIdentityStorage && isBrowser) {
         try {
           const fallbackLocalStorage = new LocalStorage();
           const localChain = await fallbackLocalStorage.get(KEY_STORAGE_DELEGATION);
@@ -16615,7 +16615,7 @@ function popHostContext(fiber) {
   contextFiberStackCursor.current === fiber && (pop(contextStackCursor), pop(contextFiberStackCursor));
   hostTransitionProviderCursor.current === fiber && (pop(hostTransitionProviderCursor), HostTransitionContext._currentValue = sharedNotPendingObject);
 }
-var hasOwnProperty$b = Object.prototype.hasOwnProperty, scheduleCallback$3 = Scheduler.unstable_scheduleCallback, cancelCallback$1 = Scheduler.unstable_cancelCallback, shouldYield = Scheduler.unstable_shouldYield, requestPaint = Scheduler.unstable_requestPaint, now$3 = Scheduler.unstable_now, getCurrentPriorityLevel = Scheduler.unstable_getCurrentPriorityLevel, ImmediatePriority = Scheduler.unstable_ImmediatePriority, UserBlockingPriority = Scheduler.unstable_UserBlockingPriority, NormalPriority$1 = Scheduler.unstable_NormalPriority, LowPriority = Scheduler.unstable_LowPriority, IdlePriority = Scheduler.unstable_IdlePriority, log$1 = Scheduler.log, unstable_setDisableYieldValue = Scheduler.unstable_setDisableYieldValue, rendererID = null, injectedHook = null;
+var hasOwnProperty$b = Object.prototype.hasOwnProperty, scheduleCallback$3 = Scheduler.unstable_scheduleCallback, cancelCallback$1 = Scheduler.unstable_cancelCallback, shouldYield = Scheduler.unstable_shouldYield, requestPaint = Scheduler.unstable_requestPaint, now$2 = Scheduler.unstable_now, getCurrentPriorityLevel = Scheduler.unstable_getCurrentPriorityLevel, ImmediatePriority = Scheduler.unstable_ImmediatePriority, UserBlockingPriority = Scheduler.unstable_UserBlockingPriority, NormalPriority$1 = Scheduler.unstable_NormalPriority, LowPriority = Scheduler.unstable_LowPriority, IdlePriority = Scheduler.unstable_IdlePriority, log$1 = Scheduler.log, unstable_setDisableYieldValue = Scheduler.unstable_setDisableYieldValue, rendererID = null, injectedHook = null;
 function setIsStrictModeForDevtools(newIsStrictMode) {
   "function" === typeof log$1 && unstable_setDisableYieldValue(newIsStrictMode);
   if (injectedHook && "function" === typeof injectedHook.setStrictMode)
@@ -17061,9 +17061,9 @@ function describeNativeComponentFrame(fn, construct) {
           if (1 !== RunInRootFrame || 1 !== namePropDescriptor) {
             do
               if (RunInRootFrame--, namePropDescriptor--, 0 > namePropDescriptor || sampleLines[RunInRootFrame] !== controlLines[namePropDescriptor]) {
-                var frame2 = "\n" + sampleLines[RunInRootFrame].replace(" at new ", " at ");
-                fn.displayName && frame2.includes("<anonymous>") && (frame2 = frame2.replace("<anonymous>", fn.displayName));
-                return frame2;
+                var frame = "\n" + sampleLines[RunInRootFrame].replace(" at new ", " at ");
+                fn.displayName && frame.includes("<anonymous>") && (frame = frame.replace("<anonymous>", fn.displayName));
+                return frame;
               }
             while (1 <= RunInRootFrame && 0 <= namePropDescriptor);
           }
@@ -18616,18 +18616,18 @@ function isThenableResolved(thenable) {
   thenable = thenable.status;
   return "fulfilled" === thenable || "rejected" === thenable;
 }
-function noop$3$1() {
+function noop$3() {
 }
 function trackUsedThenable(thenableState2, thenable, index2) {
   index2 = thenableState2[index2];
-  void 0 === index2 ? thenableState2.push(thenable) : index2 !== thenable && (thenable.then(noop$3$1, noop$3$1), thenable = index2);
+  void 0 === index2 ? thenableState2.push(thenable) : index2 !== thenable && (thenable.then(noop$3, noop$3), thenable = index2);
   switch (thenable.status) {
     case "fulfilled":
       return thenable.value;
     case "rejected":
       throw thenableState2 = thenable.reason, checkIfUseWrappedInAsyncCatch(thenableState2), thenableState2;
     default:
-      if ("string" === typeof thenable.status) thenable.then(noop$3$1, noop$3$1);
+      if ("string" === typeof thenable.status) thenable.then(noop$3, noop$3);
       else {
         thenableState2 = workInProgressRoot;
         if (null !== thenableState2 && 100 < thenableState2.shellSuspendCounter)
@@ -22106,7 +22106,7 @@ function completeWork(current, workInProgress2, renderLanes2) {
               }
               current = current.sibling;
             }
-          null !== type.tail && now$3() > workInProgressRootRenderTargetTime && (workInProgress2.flags |= 128, newProps = true, cutOffTailIfNeeded(type, false), workInProgress2.lanes = 4194304);
+          null !== type.tail && now$2() > workInProgressRootRenderTargetTime && (workInProgress2.flags |= 128, newProps = true, cutOffTailIfNeeded(type, false), workInProgress2.lanes = 4194304);
         }
       else {
         if (!newProps)
@@ -22114,11 +22114,11 @@ function completeWork(current, workInProgress2, renderLanes2) {
             if (workInProgress2.flags |= 128, newProps = true, current = current.updateQueue, workInProgress2.updateQueue = current, scheduleRetryEffect(workInProgress2, current), cutOffTailIfNeeded(type, true), null === type.tail && "hidden" === type.tailMode && !cache$127.alternate && !isHydrating)
               return bubbleProperties(workInProgress2), null;
           } else
-            2 * now$3() - type.renderingStartTime > workInProgressRootRenderTargetTime && 536870912 !== renderLanes2 && (workInProgress2.flags |= 128, newProps = true, cutOffTailIfNeeded(type, false), workInProgress2.lanes = 4194304);
+            2 * now$2() - type.renderingStartTime > workInProgressRootRenderTargetTime && 536870912 !== renderLanes2 && (workInProgress2.flags |= 128, newProps = true, cutOffTailIfNeeded(type, false), workInProgress2.lanes = 4194304);
         type.isBackwards ? (cache$127.sibling = workInProgress2.child, workInProgress2.child = cache$127) : (current = type.last, null !== current ? current.sibling = cache$127 : workInProgress2.child = cache$127, type.last = cache$127);
       }
       if (null !== type.tail)
-        return workInProgress2 = type.tail, type.rendering = workInProgress2, type.tail = workInProgress2.sibling, type.renderingStartTime = now$3(), workInProgress2.sibling = null, current = suspenseStackCursor.current, push(suspenseStackCursor, newProps ? current & 1 | 2 : current & 1), workInProgress2;
+        return workInProgress2 = type.tail, type.rendering = workInProgress2, type.tail = workInProgress2.sibling, type.renderingStartTime = now$2(), workInProgress2.sibling = null, current = suspenseStackCursor.current, push(suspenseStackCursor, newProps ? current & 1 | 2 : current & 1), workInProgress2;
       bubbleProperties(workInProgress2);
       return null;
     case 22:
@@ -23031,7 +23031,7 @@ function commitMutationEffectsOnFiber(finishedWork, root2) {
     case 13:
       recursivelyTraverseMutationEffects(root2, finishedWork);
       commitReconciliationEffects(finishedWork);
-      finishedWork.child.flags & 8192 && null !== finishedWork.memoizedState !== (null !== current && null !== current.memoizedState) && (globalMostRecentFallbackTime = now$3());
+      finishedWork.child.flags & 8192 && null !== finishedWork.memoizedState !== (null !== current && null !== current.memoizedState) && (globalMostRecentFallbackTime = now$2());
       flags & 4 && (flags = finishedWork.updateQueue, null !== flags && (finishedWork.updateQueue = null, attachSuspenseRetryListeners(finishedWork, flags)));
       break;
     case 22:
@@ -23351,9 +23351,9 @@ function commitPassiveMountOnFiber(finishedRoot, finishedWork, committedLanes, c
         );
         finishedRoot = finishedWork.stateNode;
         try {
-          var _finishedWork$memoize2 = finishedWork.memoizedProps, id2 = _finishedWork$memoize2.id, onPostCommit = _finishedWork$memoize2.onPostCommit;
+          var _finishedWork$memoize2 = finishedWork.memoizedProps, id = _finishedWork$memoize2.id, onPostCommit = _finishedWork$memoize2.onPostCommit;
           "function" === typeof onPostCommit && onPostCommit(
-            id2,
+            id,
             null === finishedWork.alternate ? "mount" : "update",
             finishedRoot.passiveEffectDuration,
             -0
@@ -23381,7 +23381,7 @@ function commitPassiveMountOnFiber(finishedRoot, finishedWork, committedLanes, c
       break;
     case 22:
       _finishedWork$memoize2 = finishedWork.stateNode;
-      id2 = finishedWork.alternate;
+      id = finishedWork.alternate;
       null !== finishedWork.memoizedState ? _finishedWork$memoize2._visibility & 2 ? recursivelyTraversePassiveMountEffects(
         finishedRoot,
         finishedWork,
@@ -23399,7 +23399,7 @@ function commitPassiveMountOnFiber(finishedRoot, finishedWork, committedLanes, c
         committedTransitions,
         0 !== (finishedWork.subtreeFlags & 10256)
       ));
-      flags & 2048 && commitOffscreenPassiveMountEffects(id2, finishedWork);
+      flags & 2048 && commitOffscreenPassiveMountEffects(id, finishedWork);
       break;
     case 24:
       recursivelyTraversePassiveMountEffects(
@@ -23781,7 +23781,7 @@ function performWorkOnRoot(root$jscomp$0, lanes, forceSync) {
           default:
             throw Error(formatProdErrorMessage(329));
         }
-        if ((lanes & 62914560) === lanes && (exitStatus = globalMostRecentFallbackTime + 300 - now$3(), 10 < exitStatus)) {
+        if ((lanes & 62914560) === lanes && (exitStatus = globalMostRecentFallbackTime + 300 - now$2(), 10 < exitStatus)) {
           markRootSuspended(
             shouldTimeSlice,
             lanes,
@@ -24044,7 +24044,7 @@ function renderRootConcurrent(root2, lanes) {
   var prevExecutionContext = executionContext;
   executionContext |= 2;
   var prevDispatcher = pushDispatcher(), prevAsyncDispatcher = pushAsyncDispatcher();
-  workInProgressRoot !== root2 || workInProgressRootRenderLanes !== lanes ? (workInProgressTransitions = null, workInProgressRootRenderTargetTime = now$3() + 500, prepareFreshStack(root2, lanes)) : workInProgressRootIsPrerendering = checkIfRootIsPrerendering(
+  workInProgressRoot !== root2 || workInProgressRootRenderLanes !== lanes ? (workInProgressTransitions = null, workInProgressRootRenderTargetTime = now$2() + 500, prepareFreshStack(root2, lanes)) : workInProgressRootIsPrerendering = checkIfRootIsPrerendering(
     root2,
     lanes
   );
@@ -24545,7 +24545,7 @@ function pingSuspendedRoot(root2, wakeable, pingedLanes) {
   null !== pingCache && pingCache.delete(wakeable);
   root2.pingedLanes |= root2.suspendedLanes & pingedLanes;
   root2.warmLanes &= ~pingedLanes;
-  workInProgressRoot === root2 && (workInProgressRootRenderLanes & pingedLanes) === pingedLanes && (4 === workInProgressRootExitStatus || 3 === workInProgressRootExitStatus && (workInProgressRootRenderLanes & 62914560) === workInProgressRootRenderLanes && 300 > now$3() - globalMostRecentFallbackTime ? 0 === (executionContext & 2) && prepareFreshStack(root2, 0) : workInProgressRootPingedLanes |= pingedLanes, workInProgressSuspendedRetryLanes === workInProgressRootRenderLanes && (workInProgressSuspendedRetryLanes = 0));
+  workInProgressRoot === root2 && (workInProgressRootRenderLanes & pingedLanes) === pingedLanes && (4 === workInProgressRootExitStatus || 3 === workInProgressRootExitStatus && (workInProgressRootRenderLanes & 62914560) === workInProgressRootRenderLanes && 300 > now$2() - globalMostRecentFallbackTime ? 0 === (executionContext & 2) && prepareFreshStack(root2, 0) : workInProgressRootPingedLanes |= pingedLanes, workInProgressSuspendedRetryLanes === workInProgressRootRenderLanes && (workInProgressSuspendedRetryLanes = 0));
   ensureRootIsScheduled(root2);
 }
 function retryTimedOutBoundary(boundaryFiber, retryLane) {
@@ -24622,7 +24622,7 @@ function processRootScheduleInMicrotask() {
   mightHavePendingSyncWork = didScheduleMicrotask = false;
   var syncTransitionLanes = 0;
   0 !== currentEventTransitionLane && (shouldAttemptEagerTransition() && (syncTransitionLanes = currentEventTransitionLane), currentEventTransitionLane = 0);
-  for (var currentTime = now$3(), prev = null, root2 = firstScheduledRoot; null !== root2; ) {
+  for (var currentTime = now$2(), prev = null, root2 = firstScheduledRoot; null !== root2; ) {
     var next = root2.next, nextLanes = scheduleTaskForRootDuringMicrotask(root2, currentTime);
     if (0 === nextLanes)
       root2.next = null, null === prev ? firstScheduledRoot = next : prev.next = next, null === next && (lastScheduledRoot = prev);
@@ -24694,7 +24694,7 @@ function performWorkOnRootViaSchedulerTask(root2, didTimeout) {
   );
   if (0 === workInProgressRootRenderLanes$jscomp$0) return null;
   performWorkOnRoot(root2, workInProgressRootRenderLanes$jscomp$0, didTimeout);
-  scheduleTaskForRootDuringMicrotask(root2, now$3());
+  scheduleTaskForRootDuringMicrotask(root2, now$2());
   return null != root2.callbackNode && root2.callbackNode === originalCallbackNode ? performWorkOnRootViaSchedulerTask.bind(null, root2) : null;
 }
 function performSyncWorkOnRoot(root2, lanes) {
@@ -26937,7 +26937,7 @@ function dispatchEvent(domEventName, eventSystemFlags, targetContainer, nativeEv
                     lanes &= ~lane;
                   }
                   ensureRootIsScheduled(fiber);
-                  0 === (executionContext & 6) && (workInProgressRootRenderTargetTime = now$3() + 500, flushSyncWorkAcrossRoots_impl(0));
+                  0 === (executionContext & 6) && (workInProgressRootRenderTargetTime = now$2() + 500, flushSyncWorkAcrossRoots_impl(0));
                 }
               }
               break;
@@ -27560,8 +27560,10 @@ const Member = Record({
   "id": MemberId,
   "photoBlob": ExternalBlob$1,
   "status": MemberStatus$1,
+  "adminSignature": Opt(Text$1),
   "approvedAt": Opt(Timestamp),
   "designation": Text$1,
+  "rank": Nat,
   "rejectionReason": Text$1,
   "fullName": Text$1,
   "email": Text$1,
@@ -27576,6 +27578,13 @@ const MemberStats = Record({
   "total": Nat,
   "joinedYesterday": Nat,
   "joinedToday": Nat
+});
+const SiteSettings = Record({
+  "adminSignature": Text$1,
+  "centerName": Text$1,
+  "siteName": Text$1,
+  "upazilaName": Text$1,
+  "unionName": Text$1
 });
 const RegisterMemberPayload = Record({
   "photoBlob": ExternalBlob$1,
@@ -27634,8 +27643,8 @@ Service({
   "addDesignation": Func([Text$1, Nat], [Designation], []),
   "addGalleryPhoto": Func([CreateGalleryPhotoPayload], [GalleryPhoto], []),
   "addLibraryItem": Func([CreateLibraryItemPayload], [LibraryItem], []),
-  "adminLogin": Func([Text$1, Text$1], [Opt(Text$1)], []),
-  "approveMember": Func([MemberId], [Bool], []),
+  "adminLogin": Func([Text$1], [Opt(Text$1)], []),
+  "approveMember": Func([MemberId, Opt(Text$1)], [Bool], []),
   "archiveNotice": Func([Nat], [Bool], []),
   "assignCallerUserRole": Func([Principal2, UserRole], [], []),
   "createNotice": Func([CreateNoticePayload], [Notice], []),
@@ -27652,6 +27661,7 @@ Service({
   "getMember": Func([MemberId], [Opt(Member)], ["query"]),
   "getMemberStats": Func([], [MemberStats], ["query"]),
   "getMyMemberProfile": Func([], [Opt(Member)], ["query"]),
+  "getSiteSettings": Func([], [SiteSettings], ["query"]),
   "isCallerAdmin": Func([], [Bool], ["query"]),
   "listAchievements": Func([], [Vec(Achievement)], ["query"]),
   "listAlumni": Func([], [Vec(AlumniRecord)], ["query"]),
@@ -27669,6 +27679,12 @@ Service({
   "rejectMember": Func([MemberId, Text$1], [Bool], []),
   "sendChatMessage": Func([SendMessagePayload], [ChatMessage], []),
   "updateMember": Func([MemberId, UpdateMemberPayload], [Bool], []),
+  "updateMemberDesignation": Func(
+    [MemberId, Text$1, Nat],
+    [Bool],
+    []
+  ),
+  "updateSiteSettings": Func([SiteSettings], [], []),
   "validateAdminSession": Func([Text$1], [Bool], ["query"])
 });
 const idlFactory = ({ IDL: IDL2 }) => {
@@ -27780,8 +27796,10 @@ const idlFactory = ({ IDL: IDL2 }) => {
     "id": MemberId2,
     "photoBlob": ExternalBlob3,
     "status": MemberStatus2,
+    "adminSignature": IDL2.Opt(IDL2.Text),
     "approvedAt": IDL2.Opt(Timestamp2),
     "designation": IDL2.Text,
+    "rank": IDL2.Nat,
     "rejectionReason": IDL2.Text,
     "fullName": IDL2.Text,
     "email": IDL2.Text,
@@ -27796,6 +27814,13 @@ const idlFactory = ({ IDL: IDL2 }) => {
     "total": IDL2.Nat,
     "joinedYesterday": IDL2.Nat,
     "joinedToday": IDL2.Nat
+  });
+  const SiteSettings2 = IDL2.Record({
+    "adminSignature": IDL2.Text,
+    "centerName": IDL2.Text,
+    "siteName": IDL2.Text,
+    "upazilaName": IDL2.Text,
+    "unionName": IDL2.Text
   });
   const RegisterMemberPayload2 = IDL2.Record({
     "photoBlob": ExternalBlob3,
@@ -27858,8 +27883,8 @@ const idlFactory = ({ IDL: IDL2 }) => {
       []
     ),
     "addLibraryItem": IDL2.Func([CreateLibraryItemPayload2], [LibraryItem2], []),
-    "adminLogin": IDL2.Func([IDL2.Text, IDL2.Text], [IDL2.Opt(IDL2.Text)], []),
-    "approveMember": IDL2.Func([MemberId2], [IDL2.Bool], []),
+    "adminLogin": IDL2.Func([IDL2.Text], [IDL2.Opt(IDL2.Text)], []),
+    "approveMember": IDL2.Func([MemberId2, IDL2.Opt(IDL2.Text)], [IDL2.Bool], []),
     "archiveNotice": IDL2.Func([IDL2.Nat], [IDL2.Bool], []),
     "assignCallerUserRole": IDL2.Func([IDL2.Principal, UserRole2], [], []),
     "createNotice": IDL2.Func([CreateNoticePayload2], [Notice2], []),
@@ -27876,6 +27901,7 @@ const idlFactory = ({ IDL: IDL2 }) => {
     "getMember": IDL2.Func([MemberId2], [IDL2.Opt(Member2)], ["query"]),
     "getMemberStats": IDL2.Func([], [MemberStats2], ["query"]),
     "getMyMemberProfile": IDL2.Func([], [IDL2.Opt(Member2)], ["query"]),
+    "getSiteSettings": IDL2.Func([], [SiteSettings2], ["query"]),
     "isCallerAdmin": IDL2.Func([], [IDL2.Bool], ["query"]),
     "listAchievements": IDL2.Func([], [IDL2.Vec(Achievement2)], ["query"]),
     "listAlumni": IDL2.Func([], [IDL2.Vec(AlumniRecord2)], ["query"]),
@@ -27893,6 +27919,12 @@ const idlFactory = ({ IDL: IDL2 }) => {
     "rejectMember": IDL2.Func([MemberId2, IDL2.Text], [IDL2.Bool], []),
     "sendChatMessage": IDL2.Func([SendMessagePayload2], [ChatMessage2], []),
     "updateMember": IDL2.Func([MemberId2, UpdateMemberPayload2], [IDL2.Bool], []),
+    "updateMemberDesignation": IDL2.Func(
+      [MemberId2, IDL2.Text, IDL2.Nat],
+      [IDL2.Bool],
+      []
+    ),
+    "updateSiteSettings": IDL2.Func([SiteSettings2], [], []),
     "validateAdminSession": IDL2.Func([IDL2.Text], [IDL2.Bool], ["query"])
   });
 };
@@ -28126,31 +28158,31 @@ class Backend {
       return from_candid_LibraryItem_n25(this._uploadFile, this._downloadFile, result);
     }
   }
-  async adminLogin(arg0, arg1) {
+  async adminLogin(arg0) {
     if (this.processError) {
       try {
-        const result = await this.actor.adminLogin(arg0, arg1);
+        const result = await this.actor.adminLogin(arg0);
         return from_candid_opt_n27(this._uploadFile, this._downloadFile, result);
       } catch (e3) {
         this.processError(e3);
         throw new Error("unreachable");
       }
     } else {
-      const result = await this.actor.adminLogin(arg0, arg1);
+      const result = await this.actor.adminLogin(arg0);
       return from_candid_opt_n27(this._uploadFile, this._downloadFile, result);
     }
   }
-  async approveMember(arg0) {
+  async approveMember(arg0, arg1) {
     if (this.processError) {
       try {
-        const result = await this.actor.approveMember(arg0);
+        const result = await this.actor.approveMember(arg0, to_candid_opt_n28(this._uploadFile, this._downloadFile, arg1));
         return result;
       } catch (e3) {
         this.processError(e3);
         throw new Error("unreachable");
       }
     } else {
-      const result = await this.actor.approveMember(arg0);
+      const result = await this.actor.approveMember(arg0, to_candid_opt_n28(this._uploadFile, this._downloadFile, arg1));
       return result;
     }
   }
@@ -28171,14 +28203,14 @@ class Backend {
   async assignCallerUserRole(arg0, arg1) {
     if (this.processError) {
       try {
-        const result = await this.actor.assignCallerUserRole(arg0, to_candid_UserRole_n28(this._uploadFile, this._downloadFile, arg1));
+        const result = await this.actor.assignCallerUserRole(arg0, to_candid_UserRole_n29(this._uploadFile, this._downloadFile, arg1));
         return result;
       } catch (e3) {
         this.processError(e3);
         throw new Error("unreachable");
       }
     } else {
-      const result = await this.actor.assignCallerUserRole(arg0, to_candid_UserRole_n28(this._uploadFile, this._downloadFile, arg1));
+      const result = await this.actor.assignCallerUserRole(arg0, to_candid_UserRole_n29(this._uploadFile, this._downloadFile, arg1));
       return result;
     }
   }
@@ -28312,14 +28344,14 @@ class Backend {
     if (this.processError) {
       try {
         const result = await this.actor.getCallerUserRole();
-        return from_candid_UserRole_n30(this._uploadFile, this._downloadFile, result);
+        return from_candid_UserRole_n31(this._uploadFile, this._downloadFile, result);
       } catch (e3) {
         this.processError(e3);
         throw new Error("unreachable");
       }
     } else {
       const result = await this.actor.getCallerUserRole();
-      return from_candid_UserRole_n30(this._uploadFile, this._downloadFile, result);
+      return from_candid_UserRole_n31(this._uploadFile, this._downloadFile, result);
     }
   }
   async getChatMessages(arg0) {
@@ -28340,14 +28372,14 @@ class Backend {
     if (this.processError) {
       try {
         const result = await this.actor.getMember(arg0);
-        return from_candid_opt_n32(this._uploadFile, this._downloadFile, result);
+        return from_candid_opt_n33(this._uploadFile, this._downloadFile, result);
       } catch (e3) {
         this.processError(e3);
         throw new Error("unreachable");
       }
     } else {
       const result = await this.actor.getMember(arg0);
-      return from_candid_opt_n32(this._uploadFile, this._downloadFile, result);
+      return from_candid_opt_n33(this._uploadFile, this._downloadFile, result);
     }
   }
   async getMemberStats() {
@@ -28368,14 +28400,28 @@ class Backend {
     if (this.processError) {
       try {
         const result = await this.actor.getMyMemberProfile();
-        return from_candid_opt_n32(this._uploadFile, this._downloadFile, result);
+        return from_candid_opt_n33(this._uploadFile, this._downloadFile, result);
       } catch (e3) {
         this.processError(e3);
         throw new Error("unreachable");
       }
     } else {
       const result = await this.actor.getMyMemberProfile();
-      return from_candid_opt_n32(this._uploadFile, this._downloadFile, result);
+      return from_candid_opt_n33(this._uploadFile, this._downloadFile, result);
+    }
+  }
+  async getSiteSettings() {
+    if (this.processError) {
+      try {
+        const result = await this.actor.getSiteSettings();
+        return result;
+      } catch (e3) {
+        this.processError(e3);
+        throw new Error("unreachable");
+      }
+    } else {
+      const result = await this.actor.getSiteSettings();
+      return result;
     }
   }
   async isCallerAdmin() {
@@ -28396,28 +28442,28 @@ class Backend {
     if (this.processError) {
       try {
         const result = await this.actor.listAchievements();
-        return from_candid_vec_n38(this._uploadFile, this._downloadFile, result);
-      } catch (e3) {
-        this.processError(e3);
-        throw new Error("unreachable");
-      }
-    } else {
-      const result = await this.actor.listAchievements();
-      return from_candid_vec_n38(this._uploadFile, this._downloadFile, result);
-    }
-  }
-  async listAlumni() {
-    if (this.processError) {
-      try {
-        const result = await this.actor.listAlumni();
         return from_candid_vec_n39(this._uploadFile, this._downloadFile, result);
       } catch (e3) {
         this.processError(e3);
         throw new Error("unreachable");
       }
     } else {
-      const result = await this.actor.listAlumni();
+      const result = await this.actor.listAchievements();
       return from_candid_vec_n39(this._uploadFile, this._downloadFile, result);
+    }
+  }
+  async listAlumni() {
+    if (this.processError) {
+      try {
+        const result = await this.actor.listAlumni();
+        return from_candid_vec_n40(this._uploadFile, this._downloadFile, result);
+      } catch (e3) {
+        this.processError(e3);
+        throw new Error("unreachable");
+      }
+    } else {
+      const result = await this.actor.listAlumni();
+      return from_candid_vec_n40(this._uploadFile, this._downloadFile, result);
     }
   }
   async listDesignations() {
@@ -28438,56 +28484,56 @@ class Backend {
     if (this.processError) {
       try {
         const result = await this.actor.listGalleryPhotos();
-        return from_candid_vec_n40(this._uploadFile, this._downloadFile, result);
-      } catch (e3) {
-        this.processError(e3);
-        throw new Error("unreachable");
-      }
-    } else {
-      const result = await this.actor.listGalleryPhotos();
-      return from_candid_vec_n40(this._uploadFile, this._downloadFile, result);
-    }
-  }
-  async listLibraryItems() {
-    if (this.processError) {
-      try {
-        const result = await this.actor.listLibraryItems();
         return from_candid_vec_n41(this._uploadFile, this._downloadFile, result);
       } catch (e3) {
         this.processError(e3);
         throw new Error("unreachable");
       }
     } else {
-      const result = await this.actor.listLibraryItems();
+      const result = await this.actor.listGalleryPhotos();
       return from_candid_vec_n41(this._uploadFile, this._downloadFile, result);
+    }
+  }
+  async listLibraryItems() {
+    if (this.processError) {
+      try {
+        const result = await this.actor.listLibraryItems();
+        return from_candid_vec_n42(this._uploadFile, this._downloadFile, result);
+      } catch (e3) {
+        this.processError(e3);
+        throw new Error("unreachable");
+      }
+    } else {
+      const result = await this.actor.listLibraryItems();
+      return from_candid_vec_n42(this._uploadFile, this._downloadFile, result);
     }
   }
   async listMembers() {
     if (this.processError) {
       try {
         const result = await this.actor.listMembers();
-        return from_candid_vec_n42(this._uploadFile, this._downloadFile, result);
+        return from_candid_vec_n43(this._uploadFile, this._downloadFile, result);
       } catch (e3) {
         this.processError(e3);
         throw new Error("unreachable");
       }
     } else {
       const result = await this.actor.listMembers();
-      return from_candid_vec_n42(this._uploadFile, this._downloadFile, result);
+      return from_candid_vec_n43(this._uploadFile, this._downloadFile, result);
     }
   }
   async listMembersByStatus(arg0) {
     if (this.processError) {
       try {
-        const result = await this.actor.listMembersByStatus(to_candid_MemberStatus_n43(this._uploadFile, this._downloadFile, arg0));
-        return from_candid_vec_n42(this._uploadFile, this._downloadFile, result);
+        const result = await this.actor.listMembersByStatus(to_candid_MemberStatus_n44(this._uploadFile, this._downloadFile, arg0));
+        return from_candid_vec_n43(this._uploadFile, this._downloadFile, result);
       } catch (e3) {
         this.processError(e3);
         throw new Error("unreachable");
       }
     } else {
-      const result = await this.actor.listMembersByStatus(to_candid_MemberStatus_n43(this._uploadFile, this._downloadFile, arg0));
-      return from_candid_vec_n42(this._uploadFile, this._downloadFile, result);
+      const result = await this.actor.listMembersByStatus(to_candid_MemberStatus_n44(this._uploadFile, this._downloadFile, arg0));
+      return from_candid_vec_n43(this._uploadFile, this._downloadFile, result);
     }
   }
   async listNotices(arg0) {
@@ -28507,14 +28553,14 @@ class Backend {
   async registerMember(arg0) {
     if (this.processError) {
       try {
-        const result = await this.actor.registerMember(await to_candid_RegisterMemberPayload_n45(this._uploadFile, this._downloadFile, arg0));
+        const result = await this.actor.registerMember(await to_candid_RegisterMemberPayload_n46(this._uploadFile, this._downloadFile, arg0));
         return result;
       } catch (e3) {
         this.processError(e3);
         throw new Error("unreachable");
       }
     } else {
-      const result = await this.actor.registerMember(await to_candid_RegisterMemberPayload_n45(this._uploadFile, this._downloadFile, arg0));
+      const result = await this.actor.registerMember(await to_candid_RegisterMemberPayload_n46(this._uploadFile, this._downloadFile, arg0));
       return result;
     }
   }
@@ -28549,14 +28595,42 @@ class Backend {
   async updateMember(arg0, arg1) {
     if (this.processError) {
       try {
-        const result = await this.actor.updateMember(arg0, await to_candid_UpdateMemberPayload_n47(this._uploadFile, this._downloadFile, arg1));
+        const result = await this.actor.updateMember(arg0, await to_candid_UpdateMemberPayload_n48(this._uploadFile, this._downloadFile, arg1));
         return result;
       } catch (e3) {
         this.processError(e3);
         throw new Error("unreachable");
       }
     } else {
-      const result = await this.actor.updateMember(arg0, await to_candid_UpdateMemberPayload_n47(this._uploadFile, this._downloadFile, arg1));
+      const result = await this.actor.updateMember(arg0, await to_candid_UpdateMemberPayload_n48(this._uploadFile, this._downloadFile, arg1));
+      return result;
+    }
+  }
+  async updateMemberDesignation(arg0, arg1, arg2) {
+    if (this.processError) {
+      try {
+        const result = await this.actor.updateMemberDesignation(arg0, arg1, arg2);
+        return result;
+      } catch (e3) {
+        this.processError(e3);
+        throw new Error("unreachable");
+      }
+    } else {
+      const result = await this.actor.updateMemberDesignation(arg0, arg1, arg2);
+      return result;
+    }
+  }
+  async updateSiteSettings(arg0) {
+    if (this.processError) {
+      try {
+        const result = await this.actor.updateSiteSettings(arg0);
+        return result;
+      } catch (e3) {
+        this.processError(e3);
+        throw new Error("unreachable");
+      }
+    } else {
+      const result = await this.actor.updateSiteSettings(arg0);
       return result;
     }
   }
@@ -28590,14 +28664,14 @@ async function from_candid_GalleryPhoto_n21(_uploadFile, _downloadFile, value) {
 async function from_candid_LibraryItem_n25(_uploadFile, _downloadFile, value) {
   return await from_candid_record_n26(_uploadFile, _downloadFile, value);
 }
-function from_candid_MemberStatus_n35(_uploadFile, _downloadFile, value) {
-  return from_candid_variant_n36(_uploadFile, _downloadFile, value);
+function from_candid_MemberStatus_n36(_uploadFile, _downloadFile, value) {
+  return from_candid_variant_n37(_uploadFile, _downloadFile, value);
 }
-async function from_candid_Member_n33(_uploadFile, _downloadFile, value) {
-  return await from_candid_record_n34(_uploadFile, _downloadFile, value);
+async function from_candid_Member_n34(_uploadFile, _downloadFile, value) {
+  return await from_candid_record_n35(_uploadFile, _downloadFile, value);
 }
-function from_candid_UserRole_n30(_uploadFile, _downloadFile, value) {
-  return from_candid_variant_n31(_uploadFile, _downloadFile, value);
+function from_candid_UserRole_n31(_uploadFile, _downloadFile, value) {
+  return from_candid_variant_n32(_uploadFile, _downloadFile, value);
 }
 function from_candid__ImmutableObjectStorageRefillResult_n4(_uploadFile, _downloadFile, value) {
   return from_candid_record_n5(_uploadFile, _downloadFile, value);
@@ -28608,10 +28682,10 @@ async function from_candid_opt_n13(_uploadFile, _downloadFile, value) {
 function from_candid_opt_n27(_uploadFile, _downloadFile, value) {
   return value.length === 0 ? null : value[0];
 }
-async function from_candid_opt_n32(_uploadFile, _downloadFile, value) {
-  return value.length === 0 ? null : await from_candid_Member_n33(_uploadFile, _downloadFile, value[0]);
+async function from_candid_opt_n33(_uploadFile, _downloadFile, value) {
+  return value.length === 0 ? null : await from_candid_Member_n34(_uploadFile, _downloadFile, value[0]);
 }
-function from_candid_opt_n37(_uploadFile, _downloadFile, value) {
+function from_candid_opt_n38(_uploadFile, _downloadFile, value) {
   return value.length === 0 ? null : value[0];
 }
 function from_candid_opt_n6(_uploadFile, _downloadFile, value) {
@@ -28659,13 +28733,15 @@ async function from_candid_record_n26(_uploadFile, _downloadFile, value) {
     category: value.category
   };
 }
-async function from_candid_record_n34(_uploadFile, _downloadFile, value) {
+async function from_candid_record_n35(_uploadFile, _downloadFile, value) {
   return {
     id: value.id,
     photoBlob: await from_candid_ExternalBlob_n14(_uploadFile, _downloadFile, value.photoBlob),
-    status: from_candid_MemberStatus_n35(_uploadFile, _downloadFile, value.status),
-    approvedAt: record_opt_to_undefined(from_candid_opt_n37(_uploadFile, _downloadFile, value.approvedAt)),
+    status: from_candid_MemberStatus_n36(_uploadFile, _downloadFile, value.status),
+    adminSignature: record_opt_to_undefined(from_candid_opt_n27(_uploadFile, _downloadFile, value.adminSignature)),
+    approvedAt: record_opt_to_undefined(from_candid_opt_n38(_uploadFile, _downloadFile, value.approvedAt)),
     designation: value.designation,
+    rank: value.rank,
     rejectionReason: value.rejectionReason,
     fullName: value.fullName,
     email: value.email,
@@ -28682,26 +28758,26 @@ function from_candid_record_n5(_uploadFile, _downloadFile, value) {
     topped_up_amount: record_opt_to_undefined(from_candid_opt_n7(_uploadFile, _downloadFile, value.topped_up_amount))
   };
 }
-function from_candid_variant_n31(_uploadFile, _downloadFile, value) {
+function from_candid_variant_n32(_uploadFile, _downloadFile, value) {
   return "admin" in value ? "admin" : "user" in value ? "user" : "guest" in value ? "guest" : value;
 }
-function from_candid_variant_n36(_uploadFile, _downloadFile, value) {
+function from_candid_variant_n37(_uploadFile, _downloadFile, value) {
   return "pending" in value ? "pending" : "approved" in value ? "approved" : "rejected" in value ? "rejected" : value;
 }
-async function from_candid_vec_n38(_uploadFile, _downloadFile, value) {
+async function from_candid_vec_n39(_uploadFile, _downloadFile, value) {
   return await Promise.all(value.map(async (x3) => await from_candid_Achievement_n11(_uploadFile, _downloadFile, x3)));
 }
-async function from_candid_vec_n39(_uploadFile, _downloadFile, value) {
+async function from_candid_vec_n40(_uploadFile, _downloadFile, value) {
   return await Promise.all(value.map(async (x3) => await from_candid_AlumniRecord_n17(_uploadFile, _downloadFile, x3)));
 }
-async function from_candid_vec_n40(_uploadFile, _downloadFile, value) {
+async function from_candid_vec_n41(_uploadFile, _downloadFile, value) {
   return await Promise.all(value.map(async (x3) => await from_candid_GalleryPhoto_n21(_uploadFile, _downloadFile, x3)));
 }
-async function from_candid_vec_n41(_uploadFile, _downloadFile, value) {
+async function from_candid_vec_n42(_uploadFile, _downloadFile, value) {
   return await Promise.all(value.map(async (x3) => await from_candid_LibraryItem_n25(_uploadFile, _downloadFile, x3)));
 }
-async function from_candid_vec_n42(_uploadFile, _downloadFile, value) {
-  return await Promise.all(value.map(async (x3) => await from_candid_Member_n33(_uploadFile, _downloadFile, x3)));
+async function from_candid_vec_n43(_uploadFile, _downloadFile, value) {
+  return await Promise.all(value.map(async (x3) => await from_candid_Member_n34(_uploadFile, _downloadFile, x3)));
 }
 async function to_candid_CreateAchievementPayload_n8(_uploadFile, _downloadFile, value) {
   return await to_candid_record_n9(_uploadFile, _downloadFile, value);
@@ -28718,23 +28794,26 @@ async function to_candid_CreateLibraryItemPayload_n23(_uploadFile, _downloadFile
 async function to_candid_ExternalBlob_n10(_uploadFile, _downloadFile, value) {
   return await _uploadFile(value);
 }
-function to_candid_MemberStatus_n43(_uploadFile, _downloadFile, value) {
-  return to_candid_variant_n44(_uploadFile, _downloadFile, value);
+function to_candid_MemberStatus_n44(_uploadFile, _downloadFile, value) {
+  return to_candid_variant_n45(_uploadFile, _downloadFile, value);
 }
-async function to_candid_RegisterMemberPayload_n45(_uploadFile, _downloadFile, value) {
-  return await to_candid_record_n46(_uploadFile, _downloadFile, value);
+async function to_candid_RegisterMemberPayload_n46(_uploadFile, _downloadFile, value) {
+  return await to_candid_record_n47(_uploadFile, _downloadFile, value);
 }
-async function to_candid_UpdateMemberPayload_n47(_uploadFile, _downloadFile, value) {
-  return await to_candid_record_n48(_uploadFile, _downloadFile, value);
+async function to_candid_UpdateMemberPayload_n48(_uploadFile, _downloadFile, value) {
+  return await to_candid_record_n49(_uploadFile, _downloadFile, value);
 }
-function to_candid_UserRole_n28(_uploadFile, _downloadFile, value) {
-  return to_candid_variant_n29(_uploadFile, _downloadFile, value);
+function to_candid_UserRole_n29(_uploadFile, _downloadFile, value) {
+  return to_candid_variant_n30(_uploadFile, _downloadFile, value);
 }
 function to_candid__ImmutableObjectStorageRefillInformation_n2(_uploadFile, _downloadFile, value) {
   return to_candid_record_n3(_uploadFile, _downloadFile, value);
 }
 function to_candid_opt_n1(_uploadFile, _downloadFile, value) {
   return value === null ? candid_none() : candid_some(to_candid__ImmutableObjectStorageRefillInformation_n2(_uploadFile, _downloadFile, value));
+}
+function to_candid_opt_n28(_uploadFile, _downloadFile, value) {
+  return value === null ? candid_none() : candid_some(value);
 }
 async function to_candid_record_n16(_uploadFile, _downloadFile, value) {
   return {
@@ -28765,7 +28844,7 @@ function to_candid_record_n3(_uploadFile, _downloadFile, value) {
     proposed_top_up_amount: value.proposed_top_up_amount ? candid_some(value.proposed_top_up_amount) : candid_none()
   };
 }
-async function to_candid_record_n46(_uploadFile, _downloadFile, value) {
+async function to_candid_record_n47(_uploadFile, _downloadFile, value) {
   return {
     photoBlob: await to_candid_ExternalBlob_n10(_uploadFile, _downloadFile, value.photoBlob),
     designation: value.designation,
@@ -28776,7 +28855,7 @@ async function to_candid_record_n46(_uploadFile, _downloadFile, value) {
     fullAddress: value.fullAddress
   };
 }
-async function to_candid_record_n48(_uploadFile, _downloadFile, value) {
+async function to_candid_record_n49(_uploadFile, _downloadFile, value) {
   return {
     photoBlob: await to_candid_ExternalBlob_n10(_uploadFile, _downloadFile, value.photoBlob),
     designation: value.designation,
@@ -28796,7 +28875,7 @@ async function to_candid_record_n9(_uploadFile, _downloadFile, value) {
     memberName: value.memberName
   };
 }
-function to_candid_variant_n29(_uploadFile, _downloadFile, value) {
+function to_candid_variant_n30(_uploadFile, _downloadFile, value) {
   return value == "admin" ? {
     admin: null
   } : value == "user" ? {
@@ -28805,7 +28884,7 @@ function to_candid_variant_n29(_uploadFile, _downloadFile, value) {
     guest: null
   } : value;
 }
-function to_candid_variant_n44(_uploadFile, _downloadFile, value) {
+function to_candid_variant_n45(_uploadFile, _downloadFile, value) {
   return value == "pending" ? {
     pending: null
   } : value == "approved" ? {
@@ -28832,153 +28911,125 @@ function ChhatraLogo({
   size = 60,
   className = ""
 }) {
-  const cx2 = 100;
-  const cy = 100;
-  const outerR = 98;
-  const midR = 90;
-  const centerR = 36;
-  const uid = `logo-${size}`;
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(
-    "div",
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "svg",
     {
-      style: {
-        width: size,
-        height: size,
-        overflow: "hidden",
-        borderRadius: "50%",
-        flexShrink: 0,
-        display: "inline-block"
-      },
+      viewBox: "0 0 200 230",
+      xmlns: "http://www.w3.org/2000/svg",
+      width: size,
+      height: size ? Math.round(size * 1.15) : void 0,
       className,
-      children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-        "svg",
-        {
-          width: size,
-          height: size,
-          viewBox: "0 0 200 200",
-          xmlns: "http://www.w3.org/2000/svg",
-          "aria-label": "২নং কপিলমুনি ইউনিয়ন ছাত্রদল লোগো",
-          role: "img",
-          style: { overflow: "hidden", borderRadius: "50%" },
-          children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("defs", { children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("clipPath", { id: `${uid}-top`, children: /* @__PURE__ */ jsxRuntimeExports.jsx("rect", { x: "0", y: "0", width: "200", height: "100" }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("clipPath", { id: `${uid}-bottom`, children: /* @__PURE__ */ jsxRuntimeExports.jsx("rect", { x: "0", y: "100", width: "200", height: "100" }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("clipPath", { id: `${uid}-circle`, children: /* @__PURE__ */ jsxRuntimeExports.jsx("circle", { cx: cx2, cy, r: midR }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                "path",
-                {
-                  id: `${uid}-arc-top`,
-                  d: `M ${cx2 - midR * 0.88} ${cy - midR * 0.05} A ${midR * 0.88} ${midR * 0.88} 0 0 1 ${cx2 + midR * 0.88} ${cy - midR * 0.05}`,
-                  fill: "none"
-                }
-              ),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                "path",
-                {
-                  id: `${uid}-arc-bot`,
-                  d: `M ${cx2 - midR * 0.88} ${cy + midR * 0.12} A ${midR * 0.88} ${midR * 0.88} 0 0 0 ${cx2 + midR * 0.88} ${cy + midR * 0.12}`,
-                  fill: "none"
-                }
-              )
-            ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("circle", { cx: cx2, cy, r: outerR, fill: "#DC143C" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("circle", { cx: cx2, cy, r: outerR - 6, fill: "#006A4E" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "circle",
-              {
-                cx: cx2,
-                cy,
-                r: midR,
-                fill: "#DC143C",
-                clipPath: `url(#${uid}-top)`
-              }
-            ),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "circle",
-              {
-                cx: cx2,
-                cy,
-                r: midR,
-                fill: "#006A4E",
-                clipPath: `url(#${uid}-bottom)`
-              }
-            ),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "rect",
-              {
-                x: cx2 - midR,
-                y: cy - 1,
-                width: midR * 2,
-                height: 2,
-                fill: "white",
-                opacity: 0.8
-              }
-            ),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("circle", { cx: cx2, cy, r: centerR, fill: "white" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "g",
-              {
-                fill: "#006A4E",
-                transform: `translate(${cx2 - 14}, ${cy - 18}) scale(0.28)`,
-                children: /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "M50 5 C45 8 42 15 40 22 C37 18 32 16 28 18 C24 20 22 26 24 30 C20 30 16 33 16 37 C16 42 20 46 25 46 C24 50 26 55 30 57 C35 59 40 57 43 53 C46 62 54 68 63 67 C72 66 77 57 75 48 C80 47 84 42 83 37 C82 32 77 28 72 29 C74 24 72 18 68 15 C63 12 57 14 55 19 C55 14 53 8 50 5Z" })
-              }
-            ),
-            [-1, 0, 1].map((off) => {
-              const sx = cx2 + off * 22;
-              const sy = cy - 58;
-              const sr = 7;
-              const pts = Array.from({ length: 5 }, (_2, k2) => {
-                const a2 = (k2 * 72 - 90) * (Math.PI / 180);
-                const b2 = (k2 * 72 + 36 - 90) * (Math.PI / 180);
-                return `${sx + sr * Math.cos(a2)},${sy + sr * Math.sin(a2)} ${sx + sr * 0.4 * Math.cos(b2)},${sy + sr * 0.4 * Math.sin(b2)}`;
-              }).join(" ");
-              return /* @__PURE__ */ jsxRuntimeExports.jsx("polygon", { points: pts, fill: "white" }, off);
-            }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "text",
-              {
-                fontSize: 12,
-                fill: "white",
-                fontFamily: "Arial, sans-serif",
-                fontWeight: "bold",
-                children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "textPath",
-                  {
-                    href: `#${uid}-arc-top`,
-                    startOffset: "50%",
-                    textAnchor: "middle",
-                    children: "বাংলাদেশ ছাত্রদল"
-                  }
-                )
-              }
-            ),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "text",
-              {
-                fontSize: 8.5,
-                fill: "white",
-                fontFamily: "Arial, sans-serif",
-                fontWeight: "600",
-                children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "textPath",
-                  {
-                    href: `#${uid}-arc-bot`,
-                    startOffset: "50%",
-                    textAnchor: "middle",
-                    children: "২নং কপিলমুনি ইউনিয়ন"
-                  }
-                )
-              }
-            )
-          ]
-        }
-      )
+      "aria-label": "২নং কপিলমুনি ইউনিয়ন ছাত্রদল লোগো",
+      role: "img",
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("defs", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("path", { id: "outerTopArc", d: "M 15,100 A 85,85 0 0,1 185,100" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("path", { id: "outerBottomArc", d: "M 25,130 A 80,80 0 0,0 175,130" })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "circle",
+          {
+            cx: "100",
+            cy: "100",
+            r: "90",
+            fill: "white",
+            stroke: "#006400",
+            strokeWidth: "4"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "circle",
+          {
+            cx: "100",
+            cy: "100",
+            r: "82",
+            fill: "none",
+            stroke: "#cc0000",
+            strokeWidth: "1.5"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "circle",
+          {
+            cx: "100",
+            cy: "100",
+            r: "78",
+            fill: "none",
+            stroke: "#006400",
+            strokeWidth: "0.5"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "text",
+          {
+            fontSize: "10",
+            fill: "#006400",
+            fontWeight: "bold",
+            fontFamily: "Arial, sans-serif",
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx("textPath", { href: "#outerTopArc", startOffset: "50%", textAnchor: "middle", children: "বাংলাদেশ জাতীয়তাবাদী ছাত্রদল" })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "text",
+          {
+            fontSize: "9.5",
+            fill: "#cc0000",
+            fontWeight: "bold",
+            fontFamily: "Arial, sans-serif",
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx("textPath", { href: "#outerBottomArc", startOffset: "50%", textAnchor: "middle", children: "২নং কপিলমুনি ইউনিয়ন" })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "text",
+          {
+            x: "100",
+            y: "88",
+            textAnchor: "middle",
+            fontSize: "22",
+            fill: "#cc0000",
+            fontWeight: "bold",
+            fontFamily: "serif",
+            children: "ছাত্রদল"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "text",
+          {
+            x: "100",
+            y: "108",
+            textAnchor: "middle",
+            fontSize: "9",
+            fill: "#006400",
+            fontFamily: "Arial, sans-serif",
+            children: "বাংলাদেশ জাতীয়তাবাদী"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "polygon",
+          {
+            points: "100,55 103,65 113,65 105,71 108,81 100,75 92,81 95,71 87,65 97,65",
+            fill: "#006400"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "text",
+          {
+            x: "100",
+            y: "215",
+            textAnchor: "middle",
+            fontSize: "13",
+            fill: "#006400",
+            fontWeight: "bold",
+            fontFamily: "Arial, sans-serif",
+            children: "বাংলাদেশ জিন্দাবাদ"
+          }
+        )
+      ]
     }
   );
 }
 var prefix = "Invariant failed";
-function invariant$1(condition, message) {
+function invariant(condition, message) {
   if (condition) {
     return;
   }
@@ -30453,7 +30504,7 @@ function processRouteTree({
     childRoutes.forEach((childRoute, i2) => {
       initRoute == null ? void 0 : initRoute(childRoute, i2);
       const existingRoute = routesById[childRoute.id];
-      invariant$1(
+      invariant(
         !existingRoute,
         `Duplicate routes found with id: ${String(childRoute.id)}`
       );
@@ -30853,11 +30904,11 @@ const _handleNotFound = (inner, err) => {
   if (!routeCursor.options.notFoundComponent && ((_a3 = inner.router.options) == null ? void 0 : _a3.defaultNotFoundComponent)) {
     routeCursor.options.notFoundComponent = inner.router.options.defaultNotFoundComponent;
   }
-  invariant$1(
+  invariant(
     routeCursor.options.notFoundComponent
   );
   const matchForRoute = inner.matches.find((m2) => m2.routeId === routeCursor.id);
-  invariant$1(matchForRoute, "Could not find match for route: " + routeCursor.id);
+  invariant(matchForRoute, "Could not find match for route: " + routeCursor.id);
   inner.updateMatch(matchForRoute.id, (prev) => ({
     ...prev,
     status: "notFound",
@@ -31664,8 +31715,8 @@ class RouterCore {
         parseCache: this.parsePathnameCache
       });
     };
-    this.cancelMatch = (id2) => {
-      const match = this.getMatch(id2);
+    this.cancelMatch = (id) => {
+      const match = this.getMatch(id);
       if (!match) return;
       match.abortController.abort();
       clearTimeout(match._nonReactive.pendingTimeout);
@@ -32116,15 +32167,15 @@ class RouterCore {
         fn();
       }
     };
-    this.updateMatch = (id2, updater) => {
+    this.updateMatch = (id, updater) => {
       var _a3;
-      const matchesKey = ((_a3 = this.state.pendingMatches) == null ? void 0 : _a3.some((d2) => d2.id === id2)) ? "pendingMatches" : this.state.matches.some((d2) => d2.id === id2) ? "matches" : this.state.cachedMatches.some((d2) => d2.id === id2) ? "cachedMatches" : "";
+      const matchesKey = ((_a3 = this.state.pendingMatches) == null ? void 0 : _a3.some((d2) => d2.id === id)) ? "pendingMatches" : this.state.matches.some((d2) => d2.id === id) ? "matches" : this.state.cachedMatches.some((d2) => d2.id === id) ? "cachedMatches" : "";
       if (matchesKey) {
         this.__store.setState((s2) => {
           var _a22;
           return {
             ...s2,
-            [matchesKey]: (_a22 = s2[matchesKey]) == null ? void 0 : _a22.map((d2) => d2.id === id2 ? updater(d2) : d2)
+            [matchesKey]: (_a22 = s2[matchesKey]) == null ? void 0 : _a22.map((d2) => d2.id === id ? updater(d2) : d2)
           };
         });
       }
@@ -32169,13 +32220,13 @@ class RouterCore {
       return redirect2;
     };
     this.clearCache = (opts) => {
-      const filter2 = opts == null ? void 0 : opts.filter;
-      if (filter2 !== void 0) {
+      const filter = opts == null ? void 0 : opts.filter;
+      if (filter !== void 0) {
         this.__store.setState((s2) => {
           return {
             ...s2,
             cachedMatches: s2.cachedMatches.filter(
-              (m2) => !filter2(m2)
+              (m2) => !filter(m2)
             )
           };
         });
@@ -32189,7 +32240,7 @@ class RouterCore {
       }
     };
     this.clearExpiredCache = () => {
-      const filter2 = (d2) => {
+      const filter = (d2) => {
         const route = this.looseRoutesById[d2.routeId];
         if (!route.options.loader) {
           return true;
@@ -32200,7 +32251,7 @@ class RouterCore {
         const gcEligible = Date.now() - d2.updatedAt >= gcTime;
         return gcEligible;
       };
-      this.clearCache({ filter: filter2 });
+      this.clearCache({ filter });
     };
     this.loadRouteChunk = loadRouteChunk;
     this.preloadRoute = async (opts) => {
@@ -32235,11 +32286,11 @@ class RouterCore {
           matches,
           location: next,
           preload: true,
-          updateMatch: (id2, updater) => {
-            if (activeMatchIds.has(id2)) {
-              matches = matches.map((d2) => d2.id === id2 ? updater(d2) : d2);
+          updateMatch: (id, updater) => {
+            if (activeMatchIds.has(id)) {
+              matches = matches.map((d2) => d2.id === id ? updater(d2) : d2);
             } else {
-              this.updateMatch(id2, updater);
+              this.updateMatch(id, updater);
             }
           }
         });
@@ -32719,7 +32770,7 @@ class BaseRoute {
       if (isRoot) {
         this._path = rootRouteId;
       } else if (!this.parentRoute) {
-        invariant$1(
+        invariant(
           false
         );
       }
@@ -32728,19 +32779,19 @@ class BaseRoute {
         path = trimPathLeft(path);
       }
       const customId = (options2 == null ? void 0 : options2.id) || path;
-      let id2 = isRoot ? rootRouteId : joinPaths([
+      let id = isRoot ? rootRouteId : joinPaths([
         this.parentRoute.id === rootRouteId ? "" : this.parentRoute.id,
         customId
       ]);
       if (path === rootRouteId) {
         path = "/";
       }
-      if (id2 !== rootRouteId) {
-        id2 = joinPaths(["/", id2]);
+      if (id !== rootRouteId) {
+        id = joinPaths(["/", id]);
       }
-      const fullPath = id2 === rootRouteId ? "/" : joinPaths([this.parentRoute.fullPath, path]);
+      const fullPath = id === rootRouteId ? "/" : joinPaths([this.parentRoute.fullPath, path]);
       this._path = path;
-      this._id = id2;
+      this._id = id;
       this._fullPath = fullPath;
       this._to = fullPath;
     };
@@ -32898,12 +32949,12 @@ function ClientOnly({ children, fallback = null }) {
 }
 function useHydrated() {
   return React$4.useSyncExternalStore(
-    subscribe,
+    subscribe$1,
     () => true,
     () => false
   );
 }
-function subscribe() {
+function subscribe$1() {
   return () => {
   };
 }
@@ -33138,7 +33189,7 @@ function useMatch(opts) {
       const match = state.matches.find(
         (d2) => opts.from ? opts.from === d2.routeId : d2.id === nearestMatchId
       );
-      invariant$1(
+      invariant(
         !((opts.shouldThrow ?? true) && !match),
         `Could not find ${opts.from ? `an active match from "${opts.from}"` : "a nearest match!"}`
       );
@@ -33225,12 +33276,12 @@ function useIntersectionObserver(ref, callback, intersectionObserverOptions2 = {
     if (!ref.current || options.disabled || typeof IntersectionObserver !== "function") {
       return;
     }
-    const observer2 = new IntersectionObserver(([entry]) => {
+    const observer = new IntersectionObserver(([entry]) => {
       callback(entry);
     }, intersectionObserverOptions2);
-    observer2.observe(ref.current);
+    observer.observe(ref.current);
     return () => {
-      observer2.disconnect();
+      observer.disconnect();
     };
   }, [callback, intersectionObserverOptions2, options.disabled, ref]);
 }
@@ -33447,19 +33498,19 @@ function useLinkProps(options, forwardedRef) {
       if (timeoutMap.has(eventTarget)) {
         return;
       }
-      const id2 = setTimeout(() => {
+      const id = setTimeout(() => {
         timeoutMap.delete(eventTarget);
         doPreload();
       }, preloadDelay);
-      timeoutMap.set(eventTarget, id2);
+      timeoutMap.set(eventTarget, id);
     }
   };
   const handleLeave = (e3) => {
     if (disabled || !preload3 || !preloadDelay) return;
     const eventTarget = e3.target;
-    const id2 = timeoutMap.get(eventTarget);
-    if (id2) {
-      clearTimeout(id2);
+    const id = timeoutMap.get(eventTarget);
+    if (id) {
+      clearTimeout(id);
       timeoutMap.delete(eventTarget);
     }
   };
@@ -33713,11 +33764,11 @@ class LazyRoute {
     this.$$typeof = Symbol.for("react.memo");
   }
 }
-function createLazyFileRoute(id2) {
-  if (typeof id2 === "object") {
-    return new LazyRoute(id2);
+function createLazyFileRoute(id) {
+  if (typeof id === "object") {
+    return new LazyRoute(id);
   }
-  return (opts) => new LazyRoute({ id: id2, ...opts });
+  return (opts) => new LazyRoute({ id, ...opts });
 }
 function Transitioner() {
   const router2 = useRouter();
@@ -33898,7 +33949,7 @@ const Match = reactExports.memo(function MatchImpl({
   const matchState = useRouterState({
     select: (s2) => {
       const match = s2.matches.find((d2) => d2.id === matchId);
-      invariant$1(
+      invariant(
         match
       );
       return {
@@ -34050,11 +34101,11 @@ const MatchInner = reactExports.memo(function MatchInnerImpl({
     throw (_c2 = router2.getMatch(match.id)) == null ? void 0 : _c2._nonReactive.loadPromise;
   }
   if (match.status === "notFound") {
-    invariant$1(isNotFound(match.error));
+    invariant(isNotFound(match.error));
     return renderRouteNotFound(router2, route, match.error);
   }
   if (match.status === "redirected") {
-    invariant$1(isRedirect(match.error));
+    invariant(isRedirect(match.error));
     throw (_d2 = router2.getMatch(match.id)) == null ? void 0 : _d2._nonReactive.loadPromise;
   }
   if (match.status === "error") {
@@ -34089,7 +34140,7 @@ const Outlet = reactExports.memo(function OutletImpl() {
     select: (s2) => {
       const matches = s2.matches;
       const parentMatch = matches.find((d2) => d2.id === matchId);
-      invariant$1(
+      invariant(
         parentMatch
       );
       return parentMatch.globalNotFound;
@@ -34295,7 +34346,19 @@ const createLucideIcon = (iconName, iconNode) => {
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
-const __iconNode$D = [
+const __iconNode$S = [
+  ["path", { d: "M3 12h18", key: "1i2n21" }],
+  ["path", { d: "M3 18h18", key: "1h113x" }],
+  ["path", { d: "M3 6h18", key: "d0wm0j" }]
+];
+const AlignJustify = createLucideIcon("align-justify", __iconNode$S);
+/**
+ * @license lucide-react v0.511.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$R = [
   [
     "path",
     {
@@ -34305,14 +34368,14 @@ const __iconNode$D = [
   ],
   ["circle", { cx: "12", cy: "8", r: "6", key: "1vp47v" }]
 ];
-const Award = createLucideIcon("award", __iconNode$D);
+const Award = createLucideIcon("award", __iconNode$R);
 /**
  * @license lucide-react v0.511.0 - ISC
  *
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
-const __iconNode$C = [
+const __iconNode$Q = [
   ["path", { d: "M10.268 21a2 2 0 0 0 3.464 0", key: "vwvbt9" }],
   [
     "path",
@@ -34322,14 +34385,14 @@ const __iconNode$C = [
     }
   ]
 ];
-const Bell = createLucideIcon("bell", __iconNode$C);
+const Bell = createLucideIcon("bell", __iconNode$Q);
 /**
  * @license lucide-react v0.511.0 - ISC
  *
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
-const __iconNode$B = [
+const __iconNode$P = [
   ["path", { d: "M12 7v14", key: "1akyts" }],
   [
     "path",
@@ -34339,7 +34402,187 @@ const __iconNode$B = [
     }
   ]
 ];
-const BookOpen = createLucideIcon("book-open", __iconNode$B);
+const BookOpen = createLucideIcon("book-open", __iconNode$P);
+/**
+ * @license lucide-react v0.511.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$O = [
+  ["path", { d: "M8 2v4", key: "1cmpym" }],
+  ["path", { d: "M16 2v4", key: "4m81vk" }],
+  ["rect", { width: "18", height: "18", x: "3", y: "4", rx: "2", key: "1hopcy" }],
+  ["path", { d: "M3 10h18", key: "8toen8" }]
+];
+const Calendar = createLucideIcon("calendar", __iconNode$O);
+/**
+ * @license lucide-react v0.511.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$N = [
+  ["line", { x1: "18", x2: "18", y1: "20", y2: "10", key: "1xfpm4" }],
+  ["line", { x1: "12", x2: "12", y1: "20", y2: "4", key: "be30l9" }],
+  ["line", { x1: "6", x2: "6", y1: "20", y2: "14", key: "1r4le6" }]
+];
+const ChartNoAxesColumn = createLucideIcon("chart-no-axes-column", __iconNode$N);
+/**
+ * @license lucide-react v0.511.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$M = [["path", { d: "m6 9 6 6 6-6", key: "qrunsl" }]];
+const ChevronDown = createLucideIcon("chevron-down", __iconNode$M);
+/**
+ * @license lucide-react v0.511.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$L = [["path", { d: "m18 15-6-6-6 6", key: "153udz" }]];
+const ChevronUp = createLucideIcon("chevron-up", __iconNode$L);
+/**
+ * @license lucide-react v0.511.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$K = [
+  ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
+  ["line", { x1: "12", x2: "12", y1: "8", y2: "12", key: "1pkeuh" }],
+  ["line", { x1: "12", x2: "12.01", y1: "16", y2: "16", key: "4dfq90" }]
+];
+const CircleAlert = createLucideIcon("circle-alert", __iconNode$K);
+/**
+ * @license lucide-react v0.511.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$J = [
+  ["path", { d: "M21.801 10A10 10 0 1 1 17 3.335", key: "yps3ct" }],
+  ["path", { d: "m9 11 3 3L22 4", key: "1pflzl" }]
+];
+const CircleCheckBig = createLucideIcon("circle-check-big", __iconNode$J);
+/**
+ * @license lucide-react v0.511.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$I = [
+  ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
+  ["path", { d: "m15 9-6 6", key: "1uzhvr" }],
+  ["path", { d: "m9 9 6 6", key: "z0biqf" }]
+];
+const CircleX = createLucideIcon("circle-x", __iconNode$I);
+/**
+ * @license lucide-react v0.511.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$H = [
+  ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
+  ["polyline", { points: "12 6 12 12 16 14", key: "68esgv" }]
+];
+const Clock = createLucideIcon("clock", __iconNode$H);
+/**
+ * @license lucide-react v0.511.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$G = [
+  ["path", { d: "M12 15V3", key: "m9g1x1" }],
+  ["path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", key: "ih7n3h" }],
+  ["path", { d: "m7 10 5 5 5-5", key: "brsn70" }]
+];
+const Download = createLucideIcon("download", __iconNode$G);
+/**
+ * @license lucide-react v0.511.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$F = [
+  ["path", { d: "M15 3h6v6", key: "1q9fwt" }],
+  ["path", { d: "M10 14 21 3", key: "gplh6r" }],
+  ["path", { d: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6", key: "a6xqqp" }]
+];
+const ExternalLink = createLucideIcon("external-link", __iconNode$F);
+/**
+ * @license lucide-react v0.511.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$E = [
+  [
+    "path",
+    {
+      d: "M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49",
+      key: "ct8e1f"
+    }
+  ],
+  ["path", { d: "M14.084 14.158a3 3 0 0 1-4.242-4.242", key: "151rxh" }],
+  [
+    "path",
+    {
+      d: "M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143",
+      key: "13bj9a"
+    }
+  ],
+  ["path", { d: "m2 2 20 20", key: "1ooewy" }]
+];
+const EyeOff = createLucideIcon("eye-off", __iconNode$E);
+/**
+ * @license lucide-react v0.511.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$D = [
+  [
+    "path",
+    {
+      d: "M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0",
+      key: "1nclc0"
+    }
+  ],
+  ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
+];
+const Eye = createLucideIcon("eye", __iconNode$D);
+/**
+ * @license lucide-react v0.511.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$C = [
+  ["path", { d: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z", key: "1rqfz7" }],
+  ["path", { d: "M14 2v4a2 2 0 0 0 2 2h4", key: "tnqrlb" }],
+  ["path", { d: "M12 18v-6", key: "17g6i2" }],
+  ["path", { d: "m9 15 3 3 3-3", key: "1npd3o" }]
+];
+const FileDown = createLucideIcon("file-down", __iconNode$C);
+/**
+ * @license lucide-react v0.511.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$B = [
+  ["path", { d: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z", key: "1rqfz7" }],
+  ["path", { d: "M14 2v4a2 2 0 0 0 2 2h4", key: "tnqrlb" }],
+  ["path", { d: "M10 9H8", key: "b1mrlr" }],
+  ["path", { d: "M16 13H8", key: "t4e002" }],
+  ["path", { d: "M16 17H8", key: "z1uh3a" }]
+];
+const FileText = createLucideIcon("file-text", __iconNode$B);
 /**
  * @license lucide-react v0.511.0 - ISC
  *
@@ -34347,15 +34590,10 @@ const BookOpen = createLucideIcon("book-open", __iconNode$B);
  * See the LICENSE file in the root directory of this source tree.
  */
 const __iconNode$A = [
-  ["path", { d: "M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z", key: "1b4qmf" }],
-  ["path", { d: "M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2", key: "i71pzd" }],
-  ["path", { d: "M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2", key: "10jefs" }],
-  ["path", { d: "M10 6h4", key: "1itunk" }],
-  ["path", { d: "M10 10h4", key: "tcdvrf" }],
-  ["path", { d: "M10 14h4", key: "kelpxr" }],
-  ["path", { d: "M10 18h4", key: "1ulq68" }]
+  ["path", { d: "M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z", key: "i9b6wo" }],
+  ["line", { x1: "4", x2: "4", y1: "22", y2: "15", key: "1cm3nv" }]
 ];
-const Building2 = createLucideIcon("building-2", __iconNode$A);
+const Flag = createLucideIcon("flag", __iconNode$A);
 /**
  * @license lucide-react v0.511.0 - ISC
  *
@@ -34363,109 +34601,18 @@ const Building2 = createLucideIcon("building-2", __iconNode$A);
  * See the LICENSE file in the root directory of this source tree.
  */
 const __iconNode$z = [
-  ["path", { d: "M8 2v4", key: "1cmpym" }],
-  ["path", { d: "M16 2v4", key: "4m81vk" }],
-  ["rect", { width: "18", height: "18", x: "3", y: "4", rx: "2", key: "1hopcy" }],
-  ["path", { d: "M3 10h18", key: "8toen8" }]
+  ["path", { d: "M2 7v10", key: "a2pl2d" }],
+  ["path", { d: "M6 5v14", key: "1kq3d7" }],
+  ["rect", { width: "12", height: "18", x: "10", y: "3", rx: "2", key: "13i7bc" }]
 ];
-const Calendar = createLucideIcon("calendar", __iconNode$z);
+const GalleryHorizontalEnd = createLucideIcon("gallery-horizontal-end", __iconNode$z);
 /**
  * @license lucide-react v0.511.0 - ISC
  *
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
-const __iconNode$y = [["path", { d: "m6 9 6 6 6-6", key: "qrunsl" }]];
-const ChevronDown = createLucideIcon("chevron-down", __iconNode$y);
-/**
- * @license lucide-react v0.511.0 - ISC
- *
- * This source code is licensed under the ISC license.
- * See the LICENSE file in the root directory of this source tree.
- */
-const __iconNode$x = [["path", { d: "m18 15-6-6-6 6", key: "153udz" }]];
-const ChevronUp = createLucideIcon("chevron-up", __iconNode$x);
-/**
- * @license lucide-react v0.511.0 - ISC
- *
- * This source code is licensed under the ISC license.
- * See the LICENSE file in the root directory of this source tree.
- */
-const __iconNode$w = [
-  ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
-  ["line", { x1: "12", x2: "12", y1: "8", y2: "12", key: "1pkeuh" }],
-  ["line", { x1: "12", x2: "12.01", y1: "16", y2: "16", key: "4dfq90" }]
-];
-const CircleAlert = createLucideIcon("circle-alert", __iconNode$w);
-/**
- * @license lucide-react v0.511.0 - ISC
- *
- * This source code is licensed under the ISC license.
- * See the LICENSE file in the root directory of this source tree.
- */
-const __iconNode$v = [
-  ["path", { d: "M21.801 10A10 10 0 1 1 17 3.335", key: "yps3ct" }],
-  ["path", { d: "m9 11 3 3L22 4", key: "1pflzl" }]
-];
-const CircleCheckBig = createLucideIcon("circle-check-big", __iconNode$v);
-/**
- * @license lucide-react v0.511.0 - ISC
- *
- * This source code is licensed under the ISC license.
- * See the LICENSE file in the root directory of this source tree.
- */
-const __iconNode$u = [
-  ["path", { d: "M12 15V3", key: "m9g1x1" }],
-  ["path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", key: "ih7n3h" }],
-  ["path", { d: "m7 10 5 5 5-5", key: "brsn70" }]
-];
-const Download = createLucideIcon("download", __iconNode$u);
-/**
- * @license lucide-react v0.511.0 - ISC
- *
- * This source code is licensed under the ISC license.
- * See the LICENSE file in the root directory of this source tree.
- */
-const __iconNode$t = [
-  ["path", { d: "M15 3h6v6", key: "1q9fwt" }],
-  ["path", { d: "M10 14 21 3", key: "gplh6r" }],
-  ["path", { d: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6", key: "a6xqqp" }]
-];
-const ExternalLink = createLucideIcon("external-link", __iconNode$t);
-/**
- * @license lucide-react v0.511.0 - ISC
- *
- * This source code is licensed under the ISC license.
- * See the LICENSE file in the root directory of this source tree.
- */
-const __iconNode$s = [
-  ["path", { d: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z", key: "1rqfz7" }],
-  ["path", { d: "M14 2v4a2 2 0 0 0 2 2h4", key: "tnqrlb" }],
-  ["path", { d: "M12 18v-6", key: "17g6i2" }],
-  ["path", { d: "m9 15 3 3 3-3", key: "1npd3o" }]
-];
-const FileDown = createLucideIcon("file-down", __iconNode$s);
-/**
- * @license lucide-react v0.511.0 - ISC
- *
- * This source code is licensed under the ISC license.
- * See the LICENSE file in the root directory of this source tree.
- */
-const __iconNode$r = [
-  ["path", { d: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z", key: "1rqfz7" }],
-  ["path", { d: "M14 2v4a2 2 0 0 0 2 2h4", key: "tnqrlb" }],
-  ["path", { d: "M10 9H8", key: "b1mrlr" }],
-  ["path", { d: "M16 13H8", key: "t4e002" }],
-  ["path", { d: "M16 17H8", key: "z1uh3a" }]
-];
-const FileText = createLucideIcon("file-text", __iconNode$r);
-/**
- * @license lucide-react v0.511.0 - ISC
- *
- * This source code is licensed under the ISC license.
- * See the LICENSE file in the root directory of this source tree.
- */
-const __iconNode$q = [
+const __iconNode$y = [
   [
     "path",
     {
@@ -34476,7 +34623,107 @@ const __iconNode$q = [
   ["path", { d: "M22 10v6", key: "1lu8f3" }],
   ["path", { d: "M6 12.5V16a6 3 0 0 0 12 0v-3.5", key: "1r8lef" }]
 ];
-const GraduationCap = createLucideIcon("graduation-cap", __iconNode$q);
+const GraduationCap = createLucideIcon("graduation-cap", __iconNode$y);
+/**
+ * @license lucide-react v0.511.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$x = [
+  ["circle", { cx: "9", cy: "12", r: "1", key: "1vctgf" }],
+  ["circle", { cx: "9", cy: "5", r: "1", key: "hp0tcf" }],
+  ["circle", { cx: "9", cy: "19", r: "1", key: "fkjjf6" }],
+  ["circle", { cx: "15", cy: "12", r: "1", key: "1tmaij" }],
+  ["circle", { cx: "15", cy: "5", r: "1", key: "19l28e" }],
+  ["circle", { cx: "15", cy: "19", r: "1", key: "f4zoj3" }]
+];
+const GripVertical = createLucideIcon("grip-vertical", __iconNode$x);
+/**
+ * @license lucide-react v0.511.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$w = [
+  [
+    "path",
+    {
+      d: "M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z",
+      key: "c3ymky"
+    }
+  ]
+];
+const Heart = createLucideIcon("heart", __iconNode$w);
+/**
+ * @license lucide-react v0.511.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$v = [
+  ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", ry: "2", key: "1m3agn" }],
+  ["circle", { cx: "9", cy: "9", r: "2", key: "af1f0g" }],
+  ["path", { d: "m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21", key: "1xmnt7" }]
+];
+const Image$1 = createLucideIcon("image", __iconNode$v);
+/**
+ * @license lucide-react v0.511.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$u = [
+  ["path", { d: "M18 22H4a2 2 0 0 1-2-2V6", key: "pblm9e" }],
+  ["path", { d: "m22 13-1.296-1.296a2.41 2.41 0 0 0-3.408 0L11 18", key: "nf6bnh" }],
+  ["circle", { cx: "12", cy: "8", r: "2", key: "1822b1" }],
+  ["rect", { width: "16", height: "16", x: "6", y: "2", rx: "2", key: "12espp" }]
+];
+const Images = createLucideIcon("images", __iconNode$u);
+/**
+ * @license lucide-react v0.511.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$t = [
+  ["rect", { width: "7", height: "9", x: "3", y: "3", rx: "1", key: "10lvy0" }],
+  ["rect", { width: "7", height: "5", x: "14", y: "3", rx: "1", key: "16une8" }],
+  ["rect", { width: "7", height: "9", x: "14", y: "12", rx: "1", key: "1hutg5" }],
+  ["rect", { width: "7", height: "5", x: "3", y: "16", rx: "1", key: "ldoo1y" }]
+];
+const LayoutDashboard = createLucideIcon("layout-dashboard", __iconNode$t);
+/**
+ * @license lucide-react v0.511.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$s = [["path", { d: "M21 12a9 9 0 1 1-6.219-8.56", key: "13zald" }]];
+const LoaderCircle = createLucideIcon("loader-circle", __iconNode$s);
+/**
+ * @license lucide-react v0.511.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$r = [
+  ["rect", { width: "18", height: "11", x: "3", y: "11", rx: "2", ry: "2", key: "1w4ew1" }],
+  ["path", { d: "M7 11V7a5 5 0 0 1 10 0v4", key: "fwvmzm" }]
+];
+const Lock = createLucideIcon("lock", __iconNode$r);
+/**
+ * @license lucide-react v0.511.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$q = [
+  ["path", { d: "m10 17 5-5-5-5", key: "1bsop3" }],
+  ["path", { d: "M15 12H3", key: "6jk70r" }],
+  ["path", { d: "M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4", key: "u53s6r" }]
+];
+const LogIn = createLucideIcon("log-in", __iconNode$q);
 /**
  * @license lucide-react v0.511.0 - ISC
  *
@@ -34484,11 +34731,11 @@ const GraduationCap = createLucideIcon("graduation-cap", __iconNode$q);
  * See the LICENSE file in the root directory of this source tree.
  */
 const __iconNode$p = [
-  ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", ry: "2", key: "1m3agn" }],
-  ["circle", { cx: "9", cy: "9", r: "2", key: "af1f0g" }],
-  ["path", { d: "m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21", key: "1xmnt7" }]
+  ["path", { d: "m16 17 5-5-5-5", key: "1bji2h" }],
+  ["path", { d: "M21 12H9", key: "dn1m92" }],
+  ["path", { d: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4", key: "1uf3rs" }]
 ];
-const Image = createLucideIcon("image", __iconNode$p);
+const LogOut = createLucideIcon("log-out", __iconNode$p);
 /**
  * @license lucide-react v0.511.0 - ISC
  *
@@ -34496,12 +34743,10 @@ const Image = createLucideIcon("image", __iconNode$p);
  * See the LICENSE file in the root directory of this source tree.
  */
 const __iconNode$o = [
-  ["path", { d: "M18 22H4a2 2 0 0 1-2-2V6", key: "pblm9e" }],
-  ["path", { d: "m22 13-1.296-1.296a2.41 2.41 0 0 0-3.408 0L11 18", key: "nf6bnh" }],
-  ["circle", { cx: "12", cy: "8", r: "2", key: "1822b1" }],
-  ["rect", { width: "16", height: "16", x: "6", y: "2", rx: "2", key: "12espp" }]
+  ["path", { d: "m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7", key: "132q7q" }],
+  ["rect", { x: "2", y: "4", width: "20", height: "16", rx: "2", key: "izxlao" }]
 ];
-const Images = createLucideIcon("images", __iconNode$o);
+const Mail = createLucideIcon("mail", __iconNode$o);
 /**
  * @license lucide-react v0.511.0 - ISC
  *
@@ -34509,20 +34754,28 @@ const Images = createLucideIcon("images", __iconNode$o);
  * See the LICENSE file in the root directory of this source tree.
  */
 const __iconNode$n = [
-  ["rect", { width: "7", height: "9", x: "3", y: "3", rx: "1", key: "10lvy0" }],
-  ["rect", { width: "7", height: "5", x: "14", y: "3", rx: "1", key: "16une8" }],
-  ["rect", { width: "7", height: "9", x: "14", y: "12", rx: "1", key: "1hutg5" }],
-  ["rect", { width: "7", height: "5", x: "3", y: "16", rx: "1", key: "ldoo1y" }]
+  [
+    "path",
+    {
+      d: "M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0",
+      key: "1r0f0z"
+    }
+  ],
+  ["circle", { cx: "12", cy: "10", r: "3", key: "ilqhr7" }]
 ];
-const LayoutDashboard = createLucideIcon("layout-dashboard", __iconNode$n);
+const MapPin = createLucideIcon("map-pin", __iconNode$n);
 /**
  * @license lucide-react v0.511.0 - ISC
  *
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
-const __iconNode$m = [["path", { d: "M21 12a9 9 0 1 1-6.219-8.56", key: "13zald" }]];
-const LoaderCircle = createLucideIcon("loader-circle", __iconNode$m);
+const __iconNode$m = [
+  ["path", { d: "M4 12h16", key: "1lakjw" }],
+  ["path", { d: "M4 18h16", key: "19g7jn" }],
+  ["path", { d: "M4 6h16", key: "1o0s65" }]
+];
+const Menu = createLucideIcon("menu", __iconNode$m);
 /**
  * @license lucide-react v0.511.0 - ISC
  *
@@ -34530,11 +34783,9 @@ const LoaderCircle = createLucideIcon("loader-circle", __iconNode$m);
  * See the LICENSE file in the root directory of this source tree.
  */
 const __iconNode$l = [
-  ["path", { d: "m10 17 5-5-5-5", key: "1bsop3" }],
-  ["path", { d: "M15 12H3", key: "6jk70r" }],
-  ["path", { d: "M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4", key: "u53s6r" }]
+  ["path", { d: "M7.9 20A9 9 0 1 0 4 16.1L2 22Z", key: "vv11sd" }]
 ];
-const LogIn = createLucideIcon("log-in", __iconNode$l);
+const MessageCircle = createLucideIcon("message-circle", __iconNode$l);
 /**
  * @license lucide-react v0.511.0 - ISC
  *
@@ -34542,10 +34793,16 @@ const LogIn = createLucideIcon("log-in", __iconNode$l);
  * See the LICENSE file in the root directory of this source tree.
  */
 const __iconNode$k = [
-  ["path", { d: "m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7", key: "132q7q" }],
-  ["rect", { x: "2", y: "4", width: "20", height: "16", rx: "2", key: "izxlao" }]
+  [
+    "path",
+    {
+      d: "M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z",
+      key: "1a8usu"
+    }
+  ],
+  ["path", { d: "m15 5 4 4", key: "1mk7zo" }]
 ];
-const Mail = createLucideIcon("mail", __iconNode$k);
+const Pencil = createLucideIcon("pencil", __iconNode$k);
 /**
  * @license lucide-react v0.511.0 - ISC
  *
@@ -34556,13 +34813,12 @@ const __iconNode$j = [
   [
     "path",
     {
-      d: "M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0",
-      key: "1r0f0z"
+      d: "M13.832 16.568a1 1 0 0 0 1.213-.303l.355-.465A2 2 0 0 1 17 15h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2A18 18 0 0 1 2 4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-.8 1.6l-.468.351a1 1 0 0 0-.292 1.233 14 14 0 0 0 6.392 6.384",
+      key: "9njp5v"
     }
-  ],
-  ["circle", { cx: "12", cy: "10", r: "3", key: "ilqhr7" }]
+  ]
 ];
-const MapPin = createLucideIcon("map-pin", __iconNode$j);
+const Phone = createLucideIcon("phone", __iconNode$j);
 /**
  * @license lucide-react v0.511.0 - ISC
  *
@@ -34570,54 +34826,6 @@ const MapPin = createLucideIcon("map-pin", __iconNode$j);
  * See the LICENSE file in the root directory of this source tree.
  */
 const __iconNode$i = [
-  ["path", { d: "M4 12h16", key: "1lakjw" }],
-  ["path", { d: "M4 18h16", key: "19g7jn" }],
-  ["path", { d: "M4 6h16", key: "1o0s65" }]
-];
-const Menu = createLucideIcon("menu", __iconNode$i);
-/**
- * @license lucide-react v0.511.0 - ISC
- *
- * This source code is licensed under the ISC license.
- * See the LICENSE file in the root directory of this source tree.
- */
-const __iconNode$h = [
-  ["path", { d: "M7.9 20A9 9 0 1 0 4 16.1L2 22Z", key: "vv11sd" }]
-];
-const MessageCircle = createLucideIcon("message-circle", __iconNode$h);
-/**
- * @license lucide-react v0.511.0 - ISC
- *
- * This source code is licensed under the ISC license.
- * See the LICENSE file in the root directory of this source tree.
- */
-const __iconNode$g = [
-  ["path", { d: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z", key: "1lielz" }]
-];
-const MessageSquare = createLucideIcon("message-square", __iconNode$g);
-/**
- * @license lucide-react v0.511.0 - ISC
- *
- * This source code is licensed under the ISC license.
- * See the LICENSE file in the root directory of this source tree.
- */
-const __iconNode$f = [
-  [
-    "path",
-    {
-      d: "M13.832 16.568a1 1 0 0 0 1.213-.303l.355-.465A2 2 0 0 1 17 15h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2A18 18 0 0 1 2 4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-.8 1.6l-.468.351a1 1 0 0 0-.292 1.233 14 14 0 0 0 6.392 6.384",
-      key: "9njp5v"
-    }
-  ]
-];
-const Phone = createLucideIcon("phone", __iconNode$f);
-/**
- * @license lucide-react v0.511.0 - ISC
- *
- * This source code is licensed under the ISC license.
- * See the LICENSE file in the root directory of this source tree.
- */
-const __iconNode$e = [
   [
     "path",
     {
@@ -34633,14 +34841,32 @@ const __iconNode$e = [
     }
   ]
 ];
-const Quote = createLucideIcon("quote", __iconNode$e);
+const Quote = createLucideIcon("quote", __iconNode$i);
 /**
  * @license lucide-react v0.511.0 - ISC
  *
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
-const __iconNode$d = [
+const __iconNode$h = [
+  [
+    "path",
+    {
+      d: "M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z",
+      key: "1c8476"
+    }
+  ],
+  ["path", { d: "M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7", key: "1ydtos" }],
+  ["path", { d: "M7 3v4a1 1 0 0 0 1 1h7", key: "t51u73" }]
+];
+const Save = createLucideIcon("save", __iconNode$h);
+/**
+ * @license lucide-react v0.511.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$g = [
   ["path", { d: "M15 12h-5", key: "r7krc0" }],
   ["path", { d: "M15 8h-5", key: "1khuty" }],
   ["path", { d: "M19 17V5a2 2 0 0 0-2-2H4", key: "zz82l3" }],
@@ -34652,14 +34878,14 @@ const __iconNode$d = [
     }
   ]
 ];
-const ScrollText = createLucideIcon("scroll-text", __iconNode$d);
+const ScrollText = createLucideIcon("scroll-text", __iconNode$g);
 /**
  * @license lucide-react v0.511.0 - ISC
  *
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
-const __iconNode$c = [
+const __iconNode$f = [
   ["path", { d: "M19 17V5a2 2 0 0 0-2-2H4", key: "zz82l3" }],
   [
     "path",
@@ -34669,7 +34895,52 @@ const __iconNode$c = [
     }
   ]
 ];
-const Scroll = createLucideIcon("scroll", __iconNode$c);
+const Scroll = createLucideIcon("scroll", __iconNode$f);
+/**
+ * @license lucide-react v0.511.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$e = [
+  ["path", { d: "m21 21-4.34-4.34", key: "14j7rj" }],
+  ["circle", { cx: "11", cy: "11", r: "8", key: "4ej97u" }]
+];
+const Search = createLucideIcon("search", __iconNode$e);
+/**
+ * @license lucide-react v0.511.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$d = [
+  [
+    "path",
+    {
+      d: "M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z",
+      key: "1ffxy3"
+    }
+  ],
+  ["path", { d: "m21.854 2.147-10.94 10.939", key: "12cjpa" }]
+];
+const Send = createLucideIcon("send", __iconNode$d);
+/**
+ * @license lucide-react v0.511.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$c = [
+  [
+    "path",
+    {
+      d: "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z",
+      key: "1qme2f"
+    }
+  ],
+  ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
+];
+const Settings = createLucideIcon("settings", __iconNode$c);
 /**
  * @license lucide-react v0.511.0 - ISC
  *
@@ -34677,10 +34948,16 @@ const Scroll = createLucideIcon("scroll", __iconNode$c);
  * See the LICENSE file in the root directory of this source tree.
  */
 const __iconNode$b = [
-  ["path", { d: "m21 21-4.34-4.34", key: "14j7rj" }],
-  ["circle", { cx: "11", cy: "11", r: "8", key: "4ej97u" }]
+  [
+    "path",
+    {
+      d: "M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z",
+      key: "oel41y"
+    }
+  ],
+  ["path", { d: "m9 12 2 2 4-4", key: "dzmm74" }]
 ];
-const Search = createLucideIcon("search", __iconNode$b);
+const ShieldCheck = createLucideIcon("shield-check", __iconNode$b);
 /**
  * @license lucide-react v0.511.0 - ISC
  *
@@ -34691,13 +34968,12 @@ const __iconNode$a = [
   [
     "path",
     {
-      d: "M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z",
-      key: "1ffxy3"
+      d: "M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z",
+      key: "oel41y"
     }
-  ],
-  ["path", { d: "m21.854 2.147-10.94 10.939", key: "12cjpa" }]
+  ]
 ];
-const Send = createLucideIcon("send", __iconNode$a);
+const Shield = createLucideIcon("shield", __iconNode$a);
 /**
  * @license lucide-react v0.511.0 - ISC
  *
@@ -34708,12 +34984,12 @@ const __iconNode$9 = [
   [
     "path",
     {
-      d: "M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z",
-      key: "oel41y"
+      d: "M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z",
+      key: "r04s7s"
     }
   ]
 ];
-const Shield = createLucideIcon("shield", __iconNode$9);
+const Star = createLucideIcon("star", __iconNode$9);
 /**
  * @license lucide-react v0.511.0 - ISC
  *
@@ -34721,15 +34997,10 @@ const Shield = createLucideIcon("shield", __iconNode$9);
  * See the LICENSE file in the root directory of this source tree.
  */
 const __iconNode$8 = [
-  [
-    "path",
-    {
-      d: "M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z",
-      key: "r04s7s"
-    }
-  ]
+  ["path", { d: "M16 7h6v6", key: "box55l" }],
+  ["path", { d: "m22 7-8.5 8.5-5-5L2 17", key: "1t1m79" }]
 ];
-const Star = createLucideIcon("star", __iconNode$8);
+const TrendingUp = createLucideIcon("trending-up", __iconNode$8);
 /**
  * @license lucide-react v0.511.0 - ISC
  *
@@ -34858,7 +35129,7 @@ const navItems = [
   {
     href: "/gallery",
     label: "ফটো গ্যালারি",
-    icon: Image,
+    icon: Image$1,
     dataOcid: "sidebar.gallery_link"
   },
   {
@@ -35501,15 +35772,15 @@ function twJoin() {
   }
   return string2;
 }
-const toValue = (mix2) => {
-  if (typeof mix2 === "string") {
-    return mix2;
+const toValue = (mix) => {
+  if (typeof mix === "string") {
+    return mix;
   }
   let resolvedValue;
   let string2 = "";
-  for (let k2 = 0; k2 < mix2.length; k2++) {
-    if (mix2[k2]) {
-      if (resolvedValue = toValue(mix2[k2])) {
+  for (let k2 = 0; k2 < mix.length; k2++) {
+    if (mix[k2]) {
+      if (resolvedValue = toValue(mix[k2])) {
         string2 && (string2 += " ");
         string2 += resolvedValue;
       }
@@ -35611,7 +35882,7 @@ const getDefaultConfig = () => {
   const opacity = fromTheme("opacity");
   const padding = fromTheme("padding");
   const saturate = fromTheme("saturate");
-  const scale2 = fromTheme("scale");
+  const scale = fromTheme("scale");
   const sepia = fromTheme("sepia");
   const skew = fromTheme("skew");
   const space = fromTheme("space");
@@ -37266,21 +37537,21 @@ const getDefaultConfig = () => {
        * @see https://tailwindcss.com/docs/scale
        */
       scale: [{
-        scale: [scale2]
+        scale: [scale]
       }],
       /**
        * Scale X
        * @see https://tailwindcss.com/docs/scale
        */
       "scale-x": [{
-        "scale-x": [scale2]
+        "scale-x": [scale]
       }],
       /**
        * Scale Y
        * @see https://tailwindcss.com/docs/scale
        */
       "scale-y": [{
-        "scale-y": [scale2]
+        "scale-y": [scale]
       }],
       /**
        * Rotate
@@ -37770,7 +38041,7 @@ const SAMPLE_ACHIEVEMENTS = [
     date: BigInt(Date.now() - 180 * 24 * 3600 * 1e3) * 1000000n
   }
 ];
-function formatDate$6(timestamp) {
+function formatDate$7(timestamp) {
   const ms = Number(timestamp / 1000000n);
   return new Date(ms).toLocaleDateString("bn-BD", {
     year: "numeric",
@@ -37893,7 +38164,7 @@ function AchievementsPage() {
                     ] }),
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "flex items-center gap-1", children: [
                       /* @__PURE__ */ jsxRuntimeExports.jsx(Calendar, { size: 12 }),
-                      formatDate$6(achievement.date)
+                      formatDate$7(achievement.date)
                     ] })
                   ] })
                 ] })
@@ -37963,6 +38234,580 @@ function useAuth() {
 }
 function useBackend() {
   return useActor(createActor);
+}
+function useToast() {
+  const [toast, setToast] = reactExports.useState(null);
+  const timerRef = reactExports.useRef(null);
+  const show = (message, type = "success") => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setToast({ message, type });
+    timerRef.current = setTimeout(() => setToast(null), 3500);
+  };
+  return { toast, show };
+}
+function Toast({ toast }) {
+  if (!toast) return null;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "div",
+    {
+      "data-ocid": "admin.toast",
+      className: `fixed top-4 right-4 z-[100] px-5 py-3 rounded-xl shadow-2xl text-white font-semibold text-sm flex items-center gap-2 transition-all ${toast.type === "success" ? "bg-[#006A4E] border border-green-400/30" : "bg-[#DC143C] border border-red-400/30"}`,
+      children: [
+        toast.type === "success" ? "✓" : "✗",
+        " ",
+        toast.message
+      ]
+    }
+  );
+}
+function Spinner({ small }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "span",
+    {
+      className: `inline-block border-2 border-white border-t-transparent rounded-full animate-spin ${small ? "w-3 h-3" : "w-4 h-4"}`
+    }
+  );
+}
+function formatDate$6(ts) {
+  return new Date(Number(ts) / 1e6).toLocaleDateString("bn-BD");
+}
+function formatDateTime(ts) {
+  return new Date(Number(ts) / 1e6).toLocaleString("bn-BD");
+}
+function StatusBadge({ status }) {
+  const map2 = {
+    [MemberStatus.pending]: {
+      label: "অপেক্ষমাণ",
+      cls: "bg-yellow-100 text-yellow-800 border-yellow-200"
+    },
+    [MemberStatus.approved]: {
+      label: "অনুমোদিত",
+      cls: "bg-green-100 text-green-800 border-green-200"
+    },
+    [MemberStatus.rejected]: {
+      label: "প্রত্যাখ্যাত",
+      cls: "bg-red-100 text-red-800 border-red-200"
+    }
+  };
+  const { label, cls } = map2[status] ?? {
+    label: status,
+    cls: "bg-gray-100 text-gray-800 border-gray-200"
+  };
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "span",
+    {
+      className: `px-2 py-0.5 rounded-full text-xs font-semibold border ${cls}`,
+      children: label
+    }
+  );
+}
+function SectionHeader({
+  title,
+  description,
+  icon
+}) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-6 pb-4 border-b border-border", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 mb-1", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-2xl", children: icon }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-xl font-display font-bold text-[#1a2e1a]", children: title })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-muted-foreground ml-11", children: description })
+  ] });
+}
+function ConfirmDialog({
+  open: open2,
+  message,
+  onConfirm,
+  onCancel,
+  isPending,
+  confirmLabel = "হ্যাঁ, নিশ্চিত করুন",
+  danger = false
+}) {
+  if (!open2) return null;
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-card rounded-xl p-6 w-full max-w-sm shadow-2xl border border-border", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-bold text-[#1a2e1a] mb-5 text-center text-base", children: message }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-3", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "button",
+        {
+          type: "button",
+          onClick: onConfirm,
+          disabled: isPending,
+          className: `flex-1 py-2.5 rounded-lg font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-60 transition-colors ${danger ? "bg-[#DC143C] hover:bg-red-700" : "bg-[#006A4E] hover:bg-green-800"}`,
+          children: [
+            isPending && /* @__PURE__ */ jsxRuntimeExports.jsx(Spinner, { small: true }),
+            confirmLabel
+          ]
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          type: "button",
+          onClick: onCancel,
+          className: "flex-1 border border-border py-2.5 rounded-lg font-semibold hover:bg-muted transition-colors",
+          children: "বাতিল"
+        }
+      )
+    ] })
+  ] }) });
+}
+function AlumniAchievementsSection({
+  show
+}) {
+  const { actor } = useBackend();
+  const qc = useQueryClient();
+  const [subTab, setSubTab] = reactExports.useState("alumni");
+  const [alumniForm, setAlumniForm] = reactExports.useState({
+    name: "",
+    designation: "",
+    yearsActive: "",
+    currentStatus: ""
+  });
+  const [achForm, setAchForm] = reactExports.useState({
+    memberName: "",
+    title: "",
+    description: ""
+  });
+  const [deleteAlumniConfirm, setDeleteAlumniConfirm] = reactExports.useState(
+    null
+  );
+  const [deleteAchConfirm, setDeleteAchConfirm] = reactExports.useState(null);
+  const { data: alumniList = [] } = useQuery({
+    queryKey: ["alumni"],
+    queryFn: async () => actor ? actor.listAlumni() : [],
+    enabled: !!actor
+  });
+  const { data: achievements = [] } = useQuery({
+    queryKey: ["achievements"],
+    queryFn: async () => actor ? actor.listAchievements() : [],
+    enabled: !!actor
+  });
+  const addAlumni = useMutation({
+    mutationFn: async (payload) => {
+      if (!actor) throw new Error("no actor");
+      return actor.addAlumni(payload);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["alumni"] });
+      show("প্রাক্তন সদস্য যোগ হয়েছে");
+      setAlumniForm({
+        name: "",
+        designation: "",
+        yearsActive: "",
+        currentStatus: ""
+      });
+    },
+    onError: () => show("যোগ ব্যর্থ হয়েছে", "error")
+  });
+  const deleteAlumni = useMutation({
+    mutationFn: async (id) => {
+      if (!actor) throw new Error("no actor");
+      return actor.deleteAlumni(id);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["alumni"] });
+      show("মুছে ফেলা হয়েছে");
+      setDeleteAlumniConfirm(null);
+    },
+    onError: () => show("মুছে ফেলা ব্যর্থ হয়েছে", "error")
+  });
+  const addAchievement = useMutation({
+    mutationFn: async (payload) => {
+      if (!actor) throw new Error("no actor");
+      return actor.addAchievement(payload);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["achievements"] });
+      show("সাফল্য যোগ হয়েছে");
+      setAchForm({ memberName: "", title: "", description: "" });
+    },
+    onError: () => show("যোগ ব্যর্থ হয়েছে", "error")
+  });
+  const deleteAchievement = useMutation({
+    mutationFn: async (id) => {
+      if (!actor) throw new Error("no actor");
+      return actor.deleteAchievement(id);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["achievements"] });
+      show("মুছে ফেলা হয়েছে");
+      setDeleteAchConfirm(null);
+    },
+    onError: () => show("মুছে ফেলা ব্যর্থ হয়েছে", "error")
+  });
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "data-ocid": "admin.alumni_achievements_section", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      SectionHeader,
+      {
+        icon: "🏆",
+        title: "অ্যালামনাই ও কৃতিত্ব",
+        description: "প্রাক্তন সদস্য এবং সদস্যদের বিশেষ কৃতিত্ব পরিচালনা করুন"
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-1 mb-6 bg-muted/50 rounded-xl p-1 w-fit", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "button",
+        {
+          type: "button",
+          "data-ocid": "admin.alumni_tab",
+          onClick: () => setSubTab("alumni"),
+          className: `px-5 py-2 rounded-lg font-semibold text-sm transition-all ${subTab === "alumni" ? "bg-card shadow text-[#1a2e1a]" : "text-muted-foreground hover:text-foreground"}`,
+          children: [
+            "প্রাক্তন সদস্য (",
+            alumniList.length,
+            ")"
+          ]
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "button",
+        {
+          type: "button",
+          "data-ocid": "admin.achievements_tab",
+          onClick: () => setSubTab("achievements"),
+          className: `px-5 py-2 rounded-lg font-semibold text-sm transition-all ${subTab === "achievements" ? "bg-card shadow text-[#1a2e1a]" : "text-muted-foreground hover:text-foreground"}`,
+          children: [
+            "কৃতিত্ব (",
+            achievements.length,
+            ")"
+          ]
+        }
+      )
+    ] }),
+    subTab === "alumni" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-card rounded-xl p-5 shadow-sm border border-border mb-5", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "font-semibold mb-3 text-[#1a2e1a]", children: "নতুন প্রাক্তন সদস্য যোগ করুন" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-3", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              "data-ocid": "admin.alumni.name_input",
+              type: "text",
+              placeholder: "নাম *",
+              value: alumniForm.name,
+              onChange: (e3) => setAlumniForm((f2) => ({ ...f2, name: e3.target.value })),
+              className: "border border-input rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#006A4E]"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              "data-ocid": "admin.alumni.designation_input",
+              type: "text",
+              placeholder: "পদবী *",
+              value: alumniForm.designation,
+              onChange: (e3) => setAlumniForm((f2) => ({ ...f2, designation: e3.target.value })),
+              className: "border border-input rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#006A4E]"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              "data-ocid": "admin.alumni.years_input",
+              type: "text",
+              placeholder: "সক্রিয় বছর (যেমন: ২০১৫-২০১৮)",
+              value: alumniForm.yearsActive,
+              onChange: (e3) => setAlumniForm((f2) => ({ ...f2, yearsActive: e3.target.value })),
+              className: "border border-input rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#006A4E]"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              "data-ocid": "admin.alumni.status_input",
+              type: "text",
+              placeholder: "বর্তমান অবস্থান",
+              value: alumniForm.currentStatus,
+              onChange: (e3) => setAlumniForm((f2) => ({
+                ...f2,
+                currentStatus: e3.target.value
+              })),
+              className: "border border-input rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#006A4E]"
+            }
+          )
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "button",
+          {
+            type: "button",
+            "data-ocid": "admin.alumni.submit_button",
+            disabled: !alumniForm.name.trim() || !alumniForm.designation.trim() || addAlumni.isPending,
+            onClick: () => addAlumni.mutate({ ...alumniForm }),
+            className: "mt-3 bg-[#006A4E] hover:bg-green-800 text-white px-5 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 disabled:opacity-60 transition-colors",
+            children: [
+              addAlumni.isPending && /* @__PURE__ */ jsxRuntimeExports.jsx(Spinner, { small: true }),
+              "যোগ করুন"
+            ]
+          }
+        )
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+        alumniList.map((a2, i2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "div",
+          {
+            "data-ocid": `admin.alumni.item.${i2 + 1}`,
+            className: "bg-card rounded-xl px-4 py-3 shadow-sm border border-border flex items-center justify-between",
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-bold text-[#1a2e1a]", children: a2.name }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-sm text-muted-foreground", children: [
+                  a2.designation,
+                  " · ",
+                  a2.yearsActive,
+                  " · ",
+                  a2.currentStatus
+                ] })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  type: "button",
+                  "data-ocid": `admin.alumni.delete_button.${i2 + 1}`,
+                  onClick: () => setDeleteAlumniConfirm(a2.id),
+                  className: "text-[#DC143C] hover:text-red-700 text-sm font-semibold px-2 py-1 rounded hover:bg-red-50",
+                  children: "মুছুন"
+                }
+              )
+            ]
+          },
+          String(a2.id)
+        )),
+        alumniList.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "div",
+          {
+            "data-ocid": "admin.alumni.empty_state",
+            className: "bg-card rounded-xl p-8 text-center border border-border text-muted-foreground",
+            children: "কোনো প্রাক্তন সদস্য নেই"
+          }
+        )
+      ] })
+    ] }),
+    subTab === "achievements" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-card rounded-xl p-5 shadow-sm border border-border mb-5", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "font-semibold mb-3 text-[#1a2e1a]", children: "নতুন কৃতিত্ব যোগ করুন" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-3", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              "data-ocid": "admin.achievements.member_input",
+              type: "text",
+              placeholder: "সদস্যের নাম *",
+              value: achForm.memberName,
+              onChange: (e3) => setAchForm((f2) => ({ ...f2, memberName: e3.target.value })),
+              className: "border border-input rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#006A4E]"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              "data-ocid": "admin.achievements.title_input",
+              type: "text",
+              placeholder: "কৃতিত্বের শিরোনাম *",
+              value: achForm.title,
+              onChange: (e3) => setAchForm((f2) => ({ ...f2, title: e3.target.value })),
+              className: "border border-input rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#006A4E]"
+            }
+          )
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "textarea",
+          {
+            "data-ocid": "admin.achievements.desc_textarea",
+            placeholder: "বিস্তারিত বিবরণ",
+            value: achForm.description,
+            onChange: (e3) => setAchForm((f2) => ({ ...f2, description: e3.target.value })),
+            className: "mt-3 w-full border border-input rounded-lg px-3 py-2 text-sm min-h-[80px] resize-none outline-none focus:ring-2 focus:ring-[#006A4E]"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "button",
+          {
+            type: "button",
+            "data-ocid": "admin.achievements.submit_button",
+            disabled: !achForm.memberName.trim() || !achForm.title.trim() || addAchievement.isPending,
+            onClick: () => addAchievement.mutate({ ...achForm }),
+            className: "mt-3 bg-[#006A4E] hover:bg-green-800 text-white px-5 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 disabled:opacity-60 transition-colors",
+            children: [
+              addAchievement.isPending && /* @__PURE__ */ jsxRuntimeExports.jsx(Spinner, { small: true }),
+              "যোগ করুন"
+            ]
+          }
+        )
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+        achievements.map((a2, i2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "div",
+          {
+            "data-ocid": `admin.achievements.item.${i2 + 1}`,
+            className: "bg-card rounded-xl px-4 py-3 shadow-sm border border-border flex items-center justify-between",
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 min-w-0", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-bold text-[#1a2e1a]", children: a2.title }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-sm text-muted-foreground", children: [
+                  a2.memberName,
+                  " · ",
+                  formatDate$6(a2.date)
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm mt-0.5 line-clamp-1", children: a2.description })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  type: "button",
+                  "data-ocid": `admin.achievements.delete_button.${i2 + 1}`,
+                  onClick: () => setDeleteAchConfirm(a2.id),
+                  className: "ml-3 text-[#DC143C] hover:text-red-700 text-sm font-semibold px-2 py-1 rounded hover:bg-red-50 flex-shrink-0",
+                  children: "মুছুন"
+                }
+              )
+            ]
+          },
+          String(a2.id)
+        )),
+        achievements.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "div",
+          {
+            "data-ocid": "admin.achievements.empty_state",
+            className: "bg-card rounded-xl p-8 text-center border border-border text-muted-foreground",
+            children: "কোনো কৃতিত্ব নেই"
+          }
+        )
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      ConfirmDialog,
+      {
+        open: deleteAlumniConfirm !== null,
+        message: "প্রাক্তন সদস্যটি মুছে ফেলতে চান?",
+        onConfirm: () => deleteAlumniConfirm !== null && deleteAlumni.mutate(deleteAlumniConfirm),
+        onCancel: () => setDeleteAlumniConfirm(null),
+        isPending: deleteAlumni.isPending,
+        confirmLabel: "হ্যাঁ, মুছুন",
+        danger: true
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      ConfirmDialog,
+      {
+        open: deleteAchConfirm !== null,
+        message: "কৃতিত্বটি মুছে ফেলতে চান?",
+        onConfirm: () => deleteAchConfirm !== null && deleteAchievement.mutate(deleteAchConfirm),
+        onCancel: () => setDeleteAchConfirm(null),
+        isPending: deleteAchievement.isPending,
+        confirmLabel: "হ্যাঁ, মুছুন",
+        danger: true
+      }
+    )
+  ] });
+}
+function ChatModerationSection({
+  show
+}) {
+  const { actor } = useBackend();
+  const qc = useQueryClient();
+  const [deleteConfirm, setDeleteConfirm] = reactExports.useState(null);
+  const { data: messages2 = [], isLoading } = useQuery({
+    queryKey: ["chatMessages"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getChatMessages(100n);
+    },
+    enabled: !!actor,
+    refetchInterval: 5e3
+  });
+  const deleteMsg = useMutation({
+    mutationFn: async (id) => {
+      if (!actor) throw new Error("no actor");
+      return actor.deleteChatMessage(id);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["chatMessages"] });
+      show("বার্তা মুছে ফেলা হয়েছে");
+      setDeleteConfirm(null);
+    },
+    onError: () => show("মুছে ফেলা ব্যর্থ হয়েছে", "error")
+  });
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "data-ocid": "admin.chat_section", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      SectionHeader,
+      {
+        icon: "💬",
+        title: "চ্যাট মডারেশন",
+        description: "সদস্যদের চ্যাট বার্তা পর্যবেক্ষণ করুন এবং অনুপযুক্ত বার্তা মুছে ফেলুন"
+      }
+    ),
+    isLoading ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex justify-center py-12", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Spinner, {}) }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "bg-card rounded-xl shadow-sm border border-border overflow-x-auto", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("table", { className: "w-full text-sm min-w-[560px]", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("thead", { className: "bg-[#1a2e1a] text-white", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("tr", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("th", { className: "px-4 py-3 text-left", children: "#" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("th", { className: "px-4 py-3 text-left", children: "প্রেরক" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("th", { className: "px-4 py-3 text-left", children: "বার্তা" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("th", { className: "px-4 py-3 text-left", children: "সময়" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("th", { className: "px-4 py-3 text-right", children: "কার্যক্রম" })
+      ] }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("tbody", { children: messages2.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("tr", { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "td",
+        {
+          colSpan: 5,
+          className: "px-4 py-10 text-center text-muted-foreground",
+          "data-ocid": "admin.chat.empty_state",
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-3xl mb-2", children: "💬" }),
+            "কোনো বার্তা নেই"
+          ]
+        }
+      ) }) : messages2.map((msg, i2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "tr",
+        {
+          "data-ocid": `admin.chat.item.${i2 + 1}`,
+          className: "border-t border-border hover:bg-muted/30 transition-colors",
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-4 py-3 text-muted-foreground text-xs", children: i2 + 1 }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-4 py-3", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2", children: [
+              msg.senderPhotoUrl && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "img",
+                {
+                  src: msg.senderPhotoUrl,
+                  alt: msg.senderName,
+                  className: "w-7 h-7 rounded-full object-cover flex-shrink-0",
+                  onError: (e3) => {
+                    e3.target.style.display = "none";
+                  }
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-semibold", children: msg.senderName })
+            ] }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-4 py-3 max-w-[300px]", children: /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "truncate text-foreground", children: msg.text }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-4 py-3 text-muted-foreground text-xs whitespace-nowrap", children: formatDateTime(msg.timestamp) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-4 py-3 text-right", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                "data-ocid": `admin.chat.delete_button.${i2 + 1}`,
+                onClick: () => setDeleteConfirm(msg.id),
+                disabled: deleteMsg.isPending,
+                className: "text-[#DC143C] hover:text-red-700 text-xs font-semibold px-2 py-1 rounded hover:bg-red-50 disabled:opacity-60 transition-colors",
+                children: "মুছুন"
+              }
+            ) })
+          ]
+        },
+        String(msg.id)
+      )) })
+    ] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      ConfirmDialog,
+      {
+        open: deleteConfirm !== null,
+        message: "এই বার্তাটি স্থায়ীভাবে মুছে ফেলতে চান?",
+        onConfirm: () => deleteConfirm !== null && deleteMsg.mutate(deleteConfirm),
+        onCancel: () => setDeleteConfirm(null),
+        isPending: deleteMsg.isPending,
+        confirmLabel: "হ্যাঁ, মুছুন",
+        danger: true
+      }
+    )
+  ] });
 }
 var isArray$e = Array.isArray;
 var isArray_1 = isArray$e;
@@ -38037,16 +38882,16 @@ function isKey$4(value, object2) {
   return reIsPlainProp.test(value) || !reIsDeepProp.test(value) || object2 != null && value in Object(object2);
 }
 var _isKey = isKey$4;
-function isObject$9(value) {
+function isObject$8(value) {
   var type = typeof value;
   return value != null && (type == "object" || type == "function");
 }
-var isObject_1 = isObject$9;
-const isObject$a = /* @__PURE__ */ getDefaultExportFromCjs(isObject_1);
-var baseGetTag$7 = _baseGetTag, isObject$8 = isObject_1;
+var isObject_1 = isObject$8;
+const isObject$9 = /* @__PURE__ */ getDefaultExportFromCjs(isObject_1);
+var baseGetTag$7 = _baseGetTag, isObject$7 = isObject_1;
 var asyncTag = "[object AsyncFunction]", funcTag$1 = "[object Function]", genTag = "[object GeneratorFunction]", proxyTag = "[object Proxy]";
 function isFunction$4(value) {
-  if (!isObject$8(value)) {
+  if (!isObject$7(value)) {
     return false;
   }
   var tag = baseGetTag$7(value);
@@ -38082,7 +38927,7 @@ function toSource$2(func) {
   return "";
 }
 var _toSource = toSource$2;
-var isFunction$3 = isFunction_1, isMasked = _isMasked, isObject$7 = isObject_1, toSource$1 = _toSource;
+var isFunction$3 = isFunction_1, isMasked = _isMasked, isObject$6 = isObject_1, toSource$1 = _toSource;
 var reRegExpChar = /[\\^$.*+?()[\]{}|]/g;
 var reIsHostCtor = /^\[object .+?Constructor\]$/;
 var funcProto$1 = Function.prototype, objectProto$a = Object.prototype;
@@ -38092,7 +38937,7 @@ var reIsNative = RegExp(
   "^" + funcToString$1.call(hasOwnProperty$9).replace(reRegExpChar, "\\$&").replace(/hasOwnProperty|(function).*?(?=\\\()| for .+?(?=\\\])/g, "$1.*?") + "$"
 );
 function baseIsNative$1(value) {
-  if (!isObject$7(value) || isMasked(value)) {
+  if (!isObject$6(value) || isMasked(value)) {
     return false;
   }
   var pattern = isFunction$3(value) ? reIsNative : reIsHostCtor;
@@ -38565,7 +39410,7 @@ var isPercent = function isPercent2(value) {
 var isNumber = function isNumber2(value) {
   return isNumber$3(value) && !isNan(value);
 };
-var isNullish$1 = function isNullish(value) {
+var isNullish = function isNullish2(value) {
   return isNil$1(value);
 };
 var isNumOrStr = function isNumOrStr2(value) {
@@ -38573,21 +39418,21 @@ var isNumOrStr = function isNumOrStr2(value) {
 };
 var idCounter$1 = 0;
 var uniqueId = function uniqueId2(prefix2) {
-  var id2 = ++idCounter$1;
-  return "".concat(prefix2 || "").concat(id2);
+  var id = ++idCounter$1;
+  return "".concat(prefix2 || "").concat(id);
 };
-var getPercentValue = function getPercentValue2(percent2, totalValue) {
+var getPercentValue = function getPercentValue2(percent, totalValue) {
   var defaultValue = arguments.length > 2 && arguments[2] !== void 0 ? arguments[2] : 0;
   var validate = arguments.length > 3 && arguments[3] !== void 0 ? arguments[3] : false;
-  if (!isNumber(percent2) && !isString$2(percent2)) {
+  if (!isNumber(percent) && !isString$2(percent)) {
     return defaultValue;
   }
   var value;
-  if (isPercent(percent2)) {
-    var index2 = percent2.indexOf("%");
-    value = totalValue * parseFloat(percent2.slice(0, index2)) / 100;
+  if (isPercent(percent)) {
+    var index2 = percent.indexOf("%");
+    value = totalValue * parseFloat(percent.slice(0, index2)) / 100;
   } else {
-    value = +percent2;
+    value = +percent;
   }
   if (isNan(value)) {
     value = defaultValue;
@@ -38999,7 +39844,7 @@ var adaptEventHandlers = function adaptEventHandlers2(props, newHandler) {
   if (/* @__PURE__ */ reactExports.isValidElement(props)) {
     inputProps = props.props;
   }
-  if (!isObject$a(inputProps)) {
+  if (!isObject$9(inputProps)) {
     return null;
   }
   var out = {};
@@ -39019,7 +39864,7 @@ var getEventHandlerOfChild = function getEventHandlerOfChild2(originalHandler, d
   };
 };
 var adaptEventsOfChild = function adaptEventsOfChild2(props, data, index2) {
-  if (!isObject$a(props) || _typeof$J(props) !== "object") {
+  if (!isObject$9(props) || _typeof$J(props) !== "object") {
     return null;
   }
   var out = null;
@@ -39155,7 +40000,7 @@ var isValidSpreadableProp = function isValidSpreadableProp2(property2, key, incl
   var matchingElementTypeKeys = (_FilteredElementKeyMa = FilteredElementKeyMap === null || FilteredElementKeyMap === void 0 ? void 0 : FilteredElementKeyMap[svgElementType]) !== null && _FilteredElementKeyMa !== void 0 ? _FilteredElementKeyMa : [];
   return key.startsWith("data-") || !isFunction$5(property2) && (svgElementType && matchingElementTypeKeys.includes(key) || SVGElementPropKeys.includes(key)) || includeEvents && EventKeys.includes(key);
 };
-var filterProps$1 = function filterProps(props, includeEvents, svgElementType) {
+var filterProps = function filterProps2(props, includeEvents, svgElementType) {
   if (!props || typeof props === "function" || typeof props === "boolean") {
     return null;
   }
@@ -39163,7 +40008,7 @@ var filterProps$1 = function filterProps(props, includeEvents, svgElementType) {
   if (/* @__PURE__ */ reactExports.isValidElement(props)) {
     inputProps = props.props;
   }
-  if (!isObject$a(inputProps)) {
+  if (!isObject$9(inputProps)) {
     return null;
   }
   var out = {};
@@ -39297,7 +40142,7 @@ function Surface(props) {
     y: 0
   };
   var layerClass = clsx("recharts-surface", className);
-  return /* @__PURE__ */ React$4.createElement("svg", _extends$q({}, filterProps$1(others, true, "svg"), {
+  return /* @__PURE__ */ React$4.createElement("svg", _extends$q({}, filterProps(others, true, "svg"), {
     className: layerClass,
     width,
     height,
@@ -39351,7 +40196,7 @@ var Layer = /* @__PURE__ */ React$4.forwardRef(function(props, ref) {
   var layerClass = clsx("recharts-layer", className);
   return /* @__PURE__ */ React$4.createElement("g", _extends$p({
     className: layerClass
-  }, filterProps$1(others, true), {
+  }, filterProps(others, true), {
     ref
   }), children);
 });
@@ -39846,7 +40691,7 @@ function Symbol$3(type, size) {
   };
   return symbol;
 }
-function noop$3() {
+function noop$2() {
 }
 function point$2(that, x3, y2) {
   that._context.bezierCurveTo(
@@ -39911,8 +40756,8 @@ function BasisClosed(context) {
   this._context = context;
 }
 BasisClosed.prototype = {
-  areaStart: noop$3,
-  areaEnd: noop$3,
+  areaStart: noop$2,
+  areaEnd: noop$2,
   lineStart: function() {
     this._x0 = this._x1 = this._x2 = this._x3 = this._x4 = this._y0 = this._y1 = this._y2 = this._y3 = this._y4 = NaN;
     this._point = 0;
@@ -40014,8 +40859,8 @@ function LinearClosed(context) {
   this._context = context;
 }
 LinearClosed.prototype = {
-  areaStart: noop$3,
-  areaEnd: noop$3,
+  areaStart: noop$2,
+  areaEnd: noop$2,
   lineStart: function() {
     this._point = 0;
   },
@@ -40147,9 +40992,9 @@ Natural.prototype = {
       if (n2 === 2) {
         this._context.lineTo(x3[1], y2[1]);
       } else {
-        var px2 = controlPoints(x3), py = controlPoints(y2);
+        var px = controlPoints(x3), py = controlPoints(y2);
         for (var i0 = 0, i1 = 1; i1 < n2; ++i0, ++i1) {
-          this._context.bezierCurveTo(px2[0][i0], py[0][i0], px2[1][i0], py[1][i0], x3[i1], y2[i1]);
+          this._context.bezierCurveTo(px[0][i0], py[0][i0], px[1][i0], py[1][i0], x3[i1], y2[i1]);
         }
       }
     }
@@ -40460,7 +41305,7 @@ var Symbols = function Symbols2(_ref) {
     return symbol();
   };
   var className = props.className, cx2 = props.cx, cy = props.cy;
-  var filteredProps = filterProps$1(props, true);
+  var filteredProps = filterProps(props, true);
   if (cx2 === +cx2 && cy === +cy && size === +size) {
     return /* @__PURE__ */ React$4.createElement("path", _extends$o({}, filteredProps, {
       className: clsx("recharts-symbols", className),
@@ -40678,7 +41523,7 @@ var DefaultLegendContent = /* @__PURE__ */ function(_PureComponent) {
     key: "renderItems",
     value: function renderItems() {
       var _this = this;
-      var _this$props = this.props, payload = _this$props.payload, iconSize = _this$props.iconSize, layout2 = _this$props.layout, formatter = _this$props.formatter, inactiveColor = _this$props.inactiveColor;
+      var _this$props = this.props, payload = _this$props.payload, iconSize = _this$props.iconSize, layout = _this$props.layout, formatter = _this$props.formatter, inactiveColor = _this$props.inactiveColor;
       var viewBox = {
         x: 0,
         y: 0,
@@ -40686,7 +41531,7 @@ var DefaultLegendContent = /* @__PURE__ */ function(_PureComponent) {
         height: SIZE
       };
       var itemStyle = {
-        display: layout2 === "horizontal" ? "inline-block" : "block",
+        display: layout === "horizontal" ? "inline-block" : "block",
         marginRight: 10
       };
       var svgStyle = {
@@ -40729,14 +41574,14 @@ var DefaultLegendContent = /* @__PURE__ */ function(_PureComponent) {
   }, {
     key: "render",
     value: function render() {
-      var _this$props2 = this.props, payload = _this$props2.payload, layout2 = _this$props2.layout, align = _this$props2.align;
+      var _this$props2 = this.props, payload = _this$props2.payload, layout = _this$props2.layout, align = _this$props2.align;
       if (!payload || !payload.length) {
         return null;
       }
       var finalStyle = {
         padding: 0,
         margin: 0,
-        textAlign: layout2 === "horizontal" ? align : "left"
+        textAlign: layout === "horizontal" ? align : "left"
       };
       return /* @__PURE__ */ React$4.createElement("ul", {
         className: "recharts-default-legend",
@@ -41322,9 +42167,9 @@ function baseIsMatch$1(object2, source, matchData, customizer) {
   return true;
 }
 var _baseIsMatch = baseIsMatch$1;
-var isObject$6 = isObject_1;
+var isObject$5 = isObject_1;
 function isStrictComparable$2(value) {
-  return value === value && !isObject$6(value);
+  return value === value && !isObject$5(value);
 }
 var _isStrictComparable = isStrictComparable$2;
 var isStrictComparable$1 = _isStrictComparable, keys$3 = keys_1;
@@ -41477,12 +42322,12 @@ function arrayIncludesWith$1(array2, value, comparator) {
   return false;
 }
 var _arrayIncludesWith = arrayIncludesWith$1;
-function noop$2() {
+function noop$1() {
 }
-var noop_1 = noop$2;
-var Set$1 = _Set, noop$1 = noop_1, setToArray$1 = _setToArray;
+var noop_1 = noop$1;
+var Set$1 = _Set, noop = noop_1, setToArray$1 = _setToArray;
 var INFINITY$1 = 1 / 0;
-var createSet$1 = !(Set$1 && 1 / setToArray$1(new Set$1([, -0]))[1] == INFINITY$1) ? noop$1 : function(values) {
+var createSet$1 = !(Set$1 && 1 / setToArray$1(new Set$1([, -0]))[1] == INFINITY$1) ? noop : function(values) {
   return new Set$1(values);
 };
 var _createSet = createSet$1;
@@ -41777,10 +42622,10 @@ var Legend = /* @__PURE__ */ function(_PureComponent) {
   }, {
     key: "getDefaultPosition",
     value: function getDefaultPosition(style2) {
-      var _this$props = this.props, layout2 = _this$props.layout, align = _this$props.align, verticalAlign = _this$props.verticalAlign, margin = _this$props.margin, chartWidth = _this$props.chartWidth, chartHeight = _this$props.chartHeight;
+      var _this$props = this.props, layout = _this$props.layout, align = _this$props.align, verticalAlign = _this$props.verticalAlign, margin = _this$props.margin, chartWidth = _this$props.chartWidth, chartHeight = _this$props.chartHeight;
       var hPos, vPos;
       if (!style2 || (style2.left === void 0 || style2.left === null) && (style2.right === void 0 || style2.right === null)) {
-        if (align === "center" && layout2 === "vertical") {
+        if (align === "center" && layout === "vertical") {
           var box = this.getBBoxSnapshot();
           hPos = {
             left: ((chartWidth || 0) - box.width) / 2
@@ -41832,13 +42677,13 @@ var Legend = /* @__PURE__ */ function(_PureComponent) {
   }], [{
     key: "getWithHeight",
     value: function getWithHeight(item, chartWidth) {
-      var _this$defaultProps$it = _objectSpread$x(_objectSpread$x({}, this.defaultProps), item.props), layout2 = _this$defaultProps$it.layout;
-      if (layout2 === "vertical" && isNumber(item.props.height)) {
+      var _this$defaultProps$it = _objectSpread$x(_objectSpread$x({}, this.defaultProps), item.props), layout = _this$defaultProps$it.layout;
+      if (layout === "vertical" && isNumber(item.props.height)) {
         return {
           height: item.props.height
         };
       }
-      if (layout2 === "horizontal") {
+      if (layout === "horizontal") {
         return {
           width: item.props.width || chartWidth
         };
@@ -42084,9 +42929,9 @@ function baseRest$1(func, start) {
   return setToString(overRest(func, start, identity$7), func + "");
 }
 var _baseRest = baseRest$1;
-var eq = eq_1, isArrayLike$1 = isArrayLike_1, isIndex = _isIndex, isObject$5 = isObject_1;
+var eq = eq_1, isArrayLike$1 = isArrayLike_1, isIndex = _isIndex, isObject$4 = isObject_1;
 function isIterateeCall$4(value, index2, object2) {
-  if (!isObject$5(object2)) {
+  if (!isObject$4(object2)) {
     return false;
   }
   var type = typeof index2;
@@ -42871,10 +43716,10 @@ _defineProperty$y(Tooltip, "defaultProps", {
   wrapperStyle: {}
 });
 var root = _root;
-var now$2 = function() {
+var now$1 = function() {
   return root.Date.now();
 };
-var now_1 = now$2;
+var now_1 = now$1;
 var reWhitespace = /\s/;
 function trimmedEndIndex$1(string2) {
   var index2 = string2.length;
@@ -42889,7 +43734,7 @@ function baseTrim$1(string2) {
   return string2 ? string2.slice(0, trimmedEndIndex(string2) + 1).replace(reTrimStart, "") : string2;
 }
 var _baseTrim = baseTrim$1;
-var baseTrim = _baseTrim, isObject$4 = isObject_1, isSymbol$1 = isSymbol_1;
+var baseTrim = _baseTrim, isObject$3 = isObject_1, isSymbol$1 = isSymbol_1;
 var NAN = 0 / 0;
 var reIsBadHex = /^[-+]0x[0-9a-f]+$/i;
 var reIsBinary = /^0b[01]+$/i;
@@ -42902,9 +43747,9 @@ function toNumber$2(value) {
   if (isSymbol$1(value)) {
     return NAN;
   }
-  if (isObject$4(value)) {
+  if (isObject$3(value)) {
     var other = typeof value.valueOf == "function" ? value.valueOf() : value;
-    value = isObject$4(other) ? other + "" : other;
+    value = isObject$3(other) ? other + "" : other;
   }
   if (typeof value != "string") {
     return value === 0 ? value : +value;
@@ -42914,7 +43759,7 @@ function toNumber$2(value) {
   return isBinary || reIsOctal.test(value) ? freeParseInt(value.slice(2), isBinary ? 2 : 8) : reIsBadHex.test(value) ? NAN : +value;
 }
 var toNumber_1 = toNumber$2;
-var isObject$3 = isObject_1, now$1 = now_1, toNumber$1 = toNumber_1;
+var isObject$2 = isObject_1, now = now_1, toNumber$1 = toNumber_1;
 var FUNC_ERROR_TEXT$1 = "Expected a function";
 var nativeMax$2 = Math.max, nativeMin = Math.min;
 function debounce$1(func, wait, options) {
@@ -42923,7 +43768,7 @@ function debounce$1(func, wait, options) {
     throw new TypeError(FUNC_ERROR_TEXT$1);
   }
   wait = toNumber$1(wait) || 0;
-  if (isObject$3(options)) {
+  if (isObject$2(options)) {
     leading = !!options.leading;
     maxing = "maxWait" in options;
     maxWait = maxing ? nativeMax$2(toNumber$1(options.maxWait) || 0, wait) : maxWait;
@@ -42950,7 +43795,7 @@ function debounce$1(func, wait, options) {
     return lastCallTime === void 0 || timeSinceLastCall >= wait || timeSinceLastCall < 0 || maxing && timeSinceLastInvoke >= maxWait;
   }
   function timerExpired() {
-    var time2 = now$1();
+    var time2 = now();
     if (shouldInvoke(time2)) {
       return trailingEdge(time2);
     }
@@ -42972,10 +43817,10 @@ function debounce$1(func, wait, options) {
     lastArgs = lastCallTime = lastThis = timerId = void 0;
   }
   function flush() {
-    return timerId === void 0 ? result : trailingEdge(now$1());
+    return timerId === void 0 ? result : trailingEdge(now());
   }
   function debounced() {
-    var time2 = now$1(), isInvoking = shouldInvoke(time2);
+    var time2 = now(), isInvoking = shouldInvoke(time2);
     lastArgs = arguments;
     lastThis = this;
     lastCallTime = time2;
@@ -42999,14 +43844,14 @@ function debounce$1(func, wait, options) {
   return debounced;
 }
 var debounce_1 = debounce$1;
-var debounce = debounce_1, isObject$2 = isObject_1;
+var debounce = debounce_1, isObject$1 = isObject_1;
 var FUNC_ERROR_TEXT = "Expected a function";
 function throttle(func, wait, options) {
   var leading = true, trailing = true;
   if (typeof func != "function") {
     throw new TypeError(FUNC_ERROR_TEXT);
   }
-  if (isObject$2(options)) {
+  if (isObject$1(options)) {
     leading = "leading" in options ? !!options.leading : leading;
     trailing = "trailing" in options ? !!options.trailing : trailing;
   }
@@ -43115,7 +43960,7 @@ var ResponsiveContainer = /* @__PURE__ */ reactExports.forwardRef(function(_ref,
   var aspect = _ref.aspect, _ref$initialDimension = _ref.initialDimension, initialDimension = _ref$initialDimension === void 0 ? {
     width: -1,
     height: -1
-  } : _ref$initialDimension, _ref$width = _ref.width, width = _ref$width === void 0 ? "100%" : _ref$width, _ref$height = _ref.height, height = _ref$height === void 0 ? "100%" : _ref$height, _ref$minWidth = _ref.minWidth, minWidth = _ref$minWidth === void 0 ? 0 : _ref$minWidth, minHeight = _ref.minHeight, maxHeight = _ref.maxHeight, children = _ref.children, _ref$debounce = _ref.debounce, debounce2 = _ref$debounce === void 0 ? 0 : _ref$debounce, id2 = _ref.id, className = _ref.className, onResize = _ref.onResize, _ref$style = _ref.style, style2 = _ref$style === void 0 ? {} : _ref$style;
+  } : _ref$initialDimension, _ref$width = _ref.width, width = _ref$width === void 0 ? "100%" : _ref$width, _ref$height = _ref.height, height = _ref$height === void 0 ? "100%" : _ref$height, _ref$minWidth = _ref.minWidth, minWidth = _ref$minWidth === void 0 ? 0 : _ref$minWidth, minHeight = _ref.minHeight, maxHeight = _ref.maxHeight, children = _ref.children, _ref$debounce = _ref.debounce, debounce2 = _ref$debounce === void 0 ? 0 : _ref$debounce, id = _ref.id, className = _ref.className, onResize = _ref.onResize, _ref$style = _ref.style, style2 = _ref$style === void 0 ? {} : _ref$style;
   var containerRef = reactExports.useRef(null);
   var onResizeRef = reactExports.useRef();
   onResizeRef.current = onResize;
@@ -43158,12 +44003,12 @@ var ResponsiveContainer = /* @__PURE__ */ reactExports.forwardRef(function(_ref,
         leading: false
       });
     }
-    var observer2 = new ResizeObserver(callback);
+    var observer = new ResizeObserver(callback);
     var _containerRef$current = containerRef.current.getBoundingClientRect(), containerWidth = _containerRef$current.width, containerHeight = _containerRef$current.height;
     setContainerSize(containerWidth, containerHeight);
-    observer2.observe(containerRef.current);
+    observer.observe(containerRef.current);
     return function() {
-      observer2.disconnect();
+      observer.disconnect();
     };
   }, [setContainerSize, debounce2]);
   var chartContent = reactExports.useMemo(function() {
@@ -43205,7 +44050,7 @@ var ResponsiveContainer = /* @__PURE__ */ reactExports.forwardRef(function(_ref,
     });
   }, [aspect, children, height, maxHeight, minHeight, minWidth, sizes, width]);
   return /* @__PURE__ */ React$4.createElement("div", {
-    id: id2 ? "".concat(id2) : void 0,
+    id: id ? "".concat(id) : void 0,
     className: clsx("recharts-responsive-container", className),
     style: _objectSpread$t(_objectSpread$t({}, style2), {}, {
       width,
@@ -43830,7 +44675,7 @@ var Text = function Text2(_ref5) {
   if (transforms.length) {
     textProps.transform = transforms.join(" ");
   }
-  return /* @__PURE__ */ React$4.createElement("text", _extends$l({}, filterProps$1(textProps, true), {
+  return /* @__PURE__ */ React$4.createElement("text", _extends$l({}, filterProps(textProps, true), {
     x: x3,
     y: y2,
     className: clsx("recharts-text", className),
@@ -43897,7 +44742,7 @@ function bisector(f2) {
 function zero$2() {
   return 0;
 }
-function number$3(x3) {
+function number$2(x3) {
   return x3 === null ? NaN : +x3;
 }
 function* numbers(values, valueof) {
@@ -43911,7 +44756,7 @@ function* numbers(values, valueof) {
 }
 const ascendingBisect = bisector(ascending);
 const bisectRight = ascendingBisect.right;
-bisector(number$3).center;
+bisector(number$2).center;
 class InternMap extends Map {
   constructor(entries, key = keyof) {
     super();
@@ -44079,7 +44924,7 @@ function quantile$1(values, p2, valueof) {
   var n2, i2 = (n2 - 1) * p2, i0 = Math.floor(i2), value0 = max$2(quickselect(values, i0).subarray(0, i0 + 1)), value1 = min$2(values.subarray(i0 + 1));
   return value0 + (value1 - value0) * (i2 - i0);
 }
-function quantileSorted(values, p2, valueof = number$3) {
+function quantileSorted(values, p2, valueof = number$2) {
   if (!(n2 = values.length) || isNaN(p2 = +p2)) return;
   if (p2 <= 0 || n2 < 2) return +valueof(values[0], 0, values);
   if (p2 >= 1) return +valueof(values[n2 - 1], n2 - 1, values);
@@ -44128,7 +44973,7 @@ function initInterpolator(domain, interpolator) {
 const implicit = Symbol("implicit");
 function ordinal() {
   var index2 = new InternMap(), domain = [], range3 = [], unknown = implicit;
-  function scale2(d2) {
+  function scale(d2) {
     let i2 = index2.get(d2);
     if (i2 === void 0) {
       if (unknown !== implicit) return unknown;
@@ -44136,30 +44981,30 @@ function ordinal() {
     }
     return range3[i2 % range3.length];
   }
-  scale2.domain = function(_2) {
+  scale.domain = function(_2) {
     if (!arguments.length) return domain.slice();
     domain = [], index2 = new InternMap();
     for (const value of _2) {
       if (index2.has(value)) continue;
       index2.set(value, domain.push(value) - 1);
     }
-    return scale2;
+    return scale;
   };
-  scale2.range = function(_2) {
-    return arguments.length ? (range3 = Array.from(_2), scale2) : range3.slice();
+  scale.range = function(_2) {
+    return arguments.length ? (range3 = Array.from(_2), scale) : range3.slice();
   };
-  scale2.unknown = function(_2) {
-    return arguments.length ? (unknown = _2, scale2) : unknown;
+  scale.unknown = function(_2) {
+    return arguments.length ? (unknown = _2, scale) : unknown;
   };
-  scale2.copy = function() {
+  scale.copy = function() {
     return ordinal(domain, range3).unknown(unknown);
   };
-  initRange.apply(scale2, arguments);
-  return scale2;
+  initRange.apply(scale, arguments);
+  return scale;
 }
 function band() {
-  var scale2 = ordinal().unknown(void 0), domain = scale2.domain, ordinalRange = scale2.range, r0 = 0, r1 = 1, step, bandwidth, round2 = false, paddingInner = 0, paddingOuter = 0, align = 0.5;
-  delete scale2.unknown;
+  var scale = ordinal().unknown(void 0), domain = scale.domain, ordinalRange = scale.range, r0 = 0, r1 = 1, step, bandwidth, round2 = false, paddingInner = 0, paddingOuter = 0, align = 0.5;
+  delete scale.unknown;
   function rescale() {
     var n2 = domain().length, reverse3 = r1 < r0, start = reverse3 ? r1 : r0, stop = reverse3 ? r0 : r1;
     step = (stop - start) / Math.max(1, n2 - paddingInner + paddingOuter * 2);
@@ -44172,50 +45017,50 @@ function band() {
     });
     return ordinalRange(reverse3 ? values.reverse() : values);
   }
-  scale2.domain = function(_2) {
+  scale.domain = function(_2) {
     return arguments.length ? (domain(_2), rescale()) : domain();
   };
-  scale2.range = function(_2) {
+  scale.range = function(_2) {
     return arguments.length ? ([r0, r1] = _2, r0 = +r0, r1 = +r1, rescale()) : [r0, r1];
   };
-  scale2.rangeRound = function(_2) {
+  scale.rangeRound = function(_2) {
     return [r0, r1] = _2, r0 = +r0, r1 = +r1, round2 = true, rescale();
   };
-  scale2.bandwidth = function() {
+  scale.bandwidth = function() {
     return bandwidth;
   };
-  scale2.step = function() {
+  scale.step = function() {
     return step;
   };
-  scale2.round = function(_2) {
+  scale.round = function(_2) {
     return arguments.length ? (round2 = !!_2, rescale()) : round2;
   };
-  scale2.padding = function(_2) {
+  scale.padding = function(_2) {
     return arguments.length ? (paddingInner = Math.min(1, paddingOuter = +_2), rescale()) : paddingInner;
   };
-  scale2.paddingInner = function(_2) {
+  scale.paddingInner = function(_2) {
     return arguments.length ? (paddingInner = Math.min(1, _2), rescale()) : paddingInner;
   };
-  scale2.paddingOuter = function(_2) {
+  scale.paddingOuter = function(_2) {
     return arguments.length ? (paddingOuter = +_2, rescale()) : paddingOuter;
   };
-  scale2.align = function(_2) {
+  scale.align = function(_2) {
     return arguments.length ? (align = Math.max(0, Math.min(1, _2)), rescale()) : align;
   };
-  scale2.copy = function() {
+  scale.copy = function() {
     return band(domain(), [r0, r1]).round(round2).paddingInner(paddingInner).paddingOuter(paddingOuter).align(align);
   };
   return initRange.apply(rescale(), arguments);
 }
-function pointish(scale2) {
-  var copy2 = scale2.copy;
-  scale2.padding = scale2.paddingOuter;
-  delete scale2.paddingInner;
-  delete scale2.paddingOuter;
-  scale2.copy = function() {
+function pointish(scale) {
+  var copy2 = scale.copy;
+  scale.padding = scale.paddingOuter;
+  delete scale.paddingInner;
+  delete scale.paddingOuter;
+  scale.copy = function() {
     return pointish(copy2());
   };
-  return scale2;
+  return scale;
 }
 function point() {
   return pointish(band.apply(null, arguments).paddingInner(1));
@@ -44384,7 +45229,7 @@ var named = {
   yellow: 16776960,
   yellowgreen: 10145074
 };
-define(Color, color$1, {
+define(Color, color, {
   copy(channels) {
     return Object.assign(new this.constructor(), this, channels);
   },
@@ -44411,20 +45256,20 @@ function color_formatHsl() {
 function color_formatRgb() {
   return this.rgb().formatRgb();
 }
-function color$1(format2) {
+function color(format2) {
   var m2, l2;
   format2 = (format2 + "").trim().toLowerCase();
-  return (m2 = reHex.exec(format2)) ? (l2 = m2[1].length, m2 = parseInt(m2[1], 16), l2 === 6 ? rgbn(m2) : l2 === 3 ? new Rgb(m2 >> 8 & 15 | m2 >> 4 & 240, m2 >> 4 & 15 | m2 & 240, (m2 & 15) << 4 | m2 & 15, 1) : l2 === 8 ? rgba$1(m2 >> 24 & 255, m2 >> 16 & 255, m2 >> 8 & 255, (m2 & 255) / 255) : l2 === 4 ? rgba$1(m2 >> 12 & 15 | m2 >> 8 & 240, m2 >> 8 & 15 | m2 >> 4 & 240, m2 >> 4 & 15 | m2 & 240, ((m2 & 15) << 4 | m2 & 15) / 255) : null) : (m2 = reRgbInteger.exec(format2)) ? new Rgb(m2[1], m2[2], m2[3], 1) : (m2 = reRgbPercent.exec(format2)) ? new Rgb(m2[1] * 255 / 100, m2[2] * 255 / 100, m2[3] * 255 / 100, 1) : (m2 = reRgbaInteger.exec(format2)) ? rgba$1(m2[1], m2[2], m2[3], m2[4]) : (m2 = reRgbaPercent.exec(format2)) ? rgba$1(m2[1] * 255 / 100, m2[2] * 255 / 100, m2[3] * 255 / 100, m2[4]) : (m2 = reHslPercent.exec(format2)) ? hsla$1(m2[1], m2[2] / 100, m2[3] / 100, 1) : (m2 = reHslaPercent.exec(format2)) ? hsla$1(m2[1], m2[2] / 100, m2[3] / 100, m2[4]) : named.hasOwnProperty(format2) ? rgbn(named[format2]) : format2 === "transparent" ? new Rgb(NaN, NaN, NaN, 0) : null;
+  return (m2 = reHex.exec(format2)) ? (l2 = m2[1].length, m2 = parseInt(m2[1], 16), l2 === 6 ? rgbn(m2) : l2 === 3 ? new Rgb(m2 >> 8 & 15 | m2 >> 4 & 240, m2 >> 4 & 15 | m2 & 240, (m2 & 15) << 4 | m2 & 15, 1) : l2 === 8 ? rgba(m2 >> 24 & 255, m2 >> 16 & 255, m2 >> 8 & 255, (m2 & 255) / 255) : l2 === 4 ? rgba(m2 >> 12 & 15 | m2 >> 8 & 240, m2 >> 8 & 15 | m2 >> 4 & 240, m2 >> 4 & 15 | m2 & 240, ((m2 & 15) << 4 | m2 & 15) / 255) : null) : (m2 = reRgbInteger.exec(format2)) ? new Rgb(m2[1], m2[2], m2[3], 1) : (m2 = reRgbPercent.exec(format2)) ? new Rgb(m2[1] * 255 / 100, m2[2] * 255 / 100, m2[3] * 255 / 100, 1) : (m2 = reRgbaInteger.exec(format2)) ? rgba(m2[1], m2[2], m2[3], m2[4]) : (m2 = reRgbaPercent.exec(format2)) ? rgba(m2[1] * 255 / 100, m2[2] * 255 / 100, m2[3] * 255 / 100, m2[4]) : (m2 = reHslPercent.exec(format2)) ? hsla(m2[1], m2[2] / 100, m2[3] / 100, 1) : (m2 = reHslaPercent.exec(format2)) ? hsla(m2[1], m2[2] / 100, m2[3] / 100, m2[4]) : named.hasOwnProperty(format2) ? rgbn(named[format2]) : format2 === "transparent" ? new Rgb(NaN, NaN, NaN, 0) : null;
 }
 function rgbn(n2) {
   return new Rgb(n2 >> 16 & 255, n2 >> 8 & 255, n2 & 255, 1);
 }
-function rgba$1(r2, g2, b2, a2) {
+function rgba(r2, g2, b2, a2) {
   if (a2 <= 0) r2 = g2 = b2 = NaN;
   return new Rgb(r2, g2, b2, a2);
 }
 function rgbConvert(o2) {
-  if (!(o2 instanceof Color)) o2 = color$1(o2);
+  if (!(o2 instanceof Color)) o2 = color(o2);
   if (!o2) return new Rgb();
   o2 = o2.rgb();
   return new Rgb(o2.r, o2.g, o2.b, o2.opacity);
@@ -44464,10 +45309,10 @@ define(Rgb, rgb$1, extend(Color, {
   toString: rgb_formatRgb
 }));
 function rgb_formatHex() {
-  return `#${hex$1(this.r)}${hex$1(this.g)}${hex$1(this.b)}`;
+  return `#${hex(this.r)}${hex(this.g)}${hex(this.b)}`;
 }
 function rgb_formatHex8() {
-  return `#${hex$1(this.r)}${hex$1(this.g)}${hex$1(this.b)}${hex$1((isNaN(this.opacity) ? 1 : this.opacity) * 255)}`;
+  return `#${hex(this.r)}${hex(this.g)}${hex(this.b)}${hex((isNaN(this.opacity) ? 1 : this.opacity) * 255)}`;
 }
 function rgb_formatRgb() {
   const a2 = clampa(this.opacity);
@@ -44479,11 +45324,11 @@ function clampa(opacity) {
 function clampi(value) {
   return Math.max(0, Math.min(255, Math.round(value) || 0));
 }
-function hex$1(value) {
+function hex(value) {
   value = clampi(value);
   return (value < 16 ? "0" : "") + value.toString(16);
 }
-function hsla$1(h2, s2, l2, a2) {
+function hsla(h2, s2, l2, a2) {
   if (a2 <= 0) h2 = s2 = l2 = NaN;
   else if (l2 <= 0 || l2 >= 1) h2 = s2 = NaN;
   else if (s2 <= 0) h2 = NaN;
@@ -44491,7 +45336,7 @@ function hsla$1(h2, s2, l2, a2) {
 }
 function hslConvert(o2) {
   if (o2 instanceof Hsl) return new Hsl(o2.h, o2.s, o2.l, o2.opacity);
-  if (!(o2 instanceof Color)) o2 = color$1(o2);
+  if (!(o2 instanceof Color)) o2 = color(o2);
   if (!o2) return new Hsl();
   if (o2 instanceof Hsl) return o2;
   o2 = o2.rgb();
@@ -44603,7 +45448,7 @@ function isNumberArray(x3) {
 }
 function genericArray(a2, b2) {
   var nb = b2 ? b2.length : 0, na = a2 ? Math.min(nb, a2.length) : 0, x3 = new Array(na), c2 = new Array(nb), i2;
-  for (i2 = 0; i2 < na; ++i2) x3[i2] = interpolate$1(a2[i2], b2[i2]);
+  for (i2 = 0; i2 < na; ++i2) x3[i2] = interpolate(a2[i2], b2[i2]);
   for (; i2 < nb; ++i2) c2[i2] = b2[i2];
   return function(t3) {
     for (i2 = 0; i2 < na; ++i2) c2[i2] = x3[i2](t3);
@@ -44627,7 +45472,7 @@ function object(a2, b2) {
   if (b2 === null || typeof b2 !== "object") b2 = {};
   for (k2 in b2) {
     if (k2 in a2) {
-      i2[k2] = interpolate$1(a2[k2], b2[k2]);
+      i2[k2] = interpolate(a2[k2], b2[k2]);
     } else {
       c2[k2] = b2[k2];
     }
@@ -44676,19 +45521,19 @@ function string(a2, b2) {
     return s2.join("");
   });
 }
-function interpolate$1(a2, b2) {
+function interpolate(a2, b2) {
   var t3 = typeof b2, c2;
-  return b2 == null || t3 === "boolean" ? constant(b2) : (t3 === "number" ? interpolateNumber$1 : t3 === "string" ? (c2 = color$1(b2)) ? (b2 = c2, rgb) : string : b2 instanceof color$1 ? rgb : b2 instanceof Date ? date$1 : isNumberArray(b2) ? numberArray : Array.isArray(b2) ? genericArray : typeof b2.valueOf !== "function" && typeof b2.toString !== "function" || isNaN(b2) ? object : interpolateNumber$1)(a2, b2);
+  return b2 == null || t3 === "boolean" ? constant(b2) : (t3 === "number" ? interpolateNumber$1 : t3 === "string" ? (c2 = color(b2)) ? (b2 = c2, rgb) : string : b2 instanceof color ? rgb : b2 instanceof Date ? date$1 : isNumberArray(b2) ? numberArray : Array.isArray(b2) ? genericArray : typeof b2.valueOf !== "function" && typeof b2.toString !== "function" || isNaN(b2) ? object : interpolateNumber$1)(a2, b2);
 }
 function interpolateRound(a2, b2) {
   return a2 = +a2, b2 = +b2, function(t3) {
     return Math.round(a2 * (1 - t3) + b2 * t3);
   };
 }
-function piecewise(interpolate2, values) {
-  if (values === void 0) values = interpolate2, interpolate2 = interpolate$1;
+function piecewise(interpolate$1, values) {
+  if (values === void 0) values = interpolate$1, interpolate$1 = interpolate;
   var i2 = 0, n2 = values.length - 1, v2 = values[0], I2 = new Array(n2 < 0 ? 0 : n2);
-  while (i2 < n2) I2[i2] = interpolate2(v2, v2 = values[++i2]);
+  while (i2 < n2) I2[i2] = interpolate$1(v2, v2 = values[++i2]);
   return function(t3) {
     var i3 = Math.max(0, Math.min(n2 - 1, Math.floor(t3 *= n2)));
     return I2[i3](t3 - i3);
@@ -44699,7 +45544,7 @@ function constants(x3) {
     return x3;
   };
 }
-function number$2(x3) {
+function number$1(x3) {
   return +x3;
 }
 var unit = [0, 1];
@@ -44745,37 +45590,37 @@ function copy$1(source, target) {
   return target.domain(source.domain()).range(source.range()).interpolate(source.interpolate()).clamp(source.clamp()).unknown(source.unknown());
 }
 function transformer$2() {
-  var domain = unit, range3 = unit, interpolate2 = interpolate$1, transform, untransform, unknown, clamp2 = identity$6, piecewise2, output, input;
+  var domain = unit, range3 = unit, interpolate$1 = interpolate, transform, untransform, unknown, clamp = identity$6, piecewise2, output, input;
   function rescale() {
     var n2 = Math.min(domain.length, range3.length);
-    if (clamp2 !== identity$6) clamp2 = clamper(domain[0], domain[n2 - 1]);
+    if (clamp !== identity$6) clamp = clamper(domain[0], domain[n2 - 1]);
     piecewise2 = n2 > 2 ? polymap : bimap;
     output = input = null;
-    return scale2;
+    return scale;
   }
-  function scale2(x3) {
-    return x3 == null || isNaN(x3 = +x3) ? unknown : (output || (output = piecewise2(domain.map(transform), range3, interpolate2)))(transform(clamp2(x3)));
+  function scale(x3) {
+    return x3 == null || isNaN(x3 = +x3) ? unknown : (output || (output = piecewise2(domain.map(transform), range3, interpolate$1)))(transform(clamp(x3)));
   }
-  scale2.invert = function(y2) {
-    return clamp2(untransform((input || (input = piecewise2(range3, domain.map(transform), interpolateNumber$1)))(y2)));
+  scale.invert = function(y2) {
+    return clamp(untransform((input || (input = piecewise2(range3, domain.map(transform), interpolateNumber$1)))(y2)));
   };
-  scale2.domain = function(_2) {
-    return arguments.length ? (domain = Array.from(_2, number$2), rescale()) : domain.slice();
+  scale.domain = function(_2) {
+    return arguments.length ? (domain = Array.from(_2, number$1), rescale()) : domain.slice();
   };
-  scale2.range = function(_2) {
+  scale.range = function(_2) {
     return arguments.length ? (range3 = Array.from(_2), rescale()) : range3.slice();
   };
-  scale2.rangeRound = function(_2) {
-    return range3 = Array.from(_2), interpolate2 = interpolateRound, rescale();
+  scale.rangeRound = function(_2) {
+    return range3 = Array.from(_2), interpolate$1 = interpolateRound, rescale();
   };
-  scale2.clamp = function(_2) {
-    return arguments.length ? (clamp2 = _2 ? true : identity$6, rescale()) : clamp2 !== identity$6;
+  scale.clamp = function(_2) {
+    return arguments.length ? (clamp = _2 ? true : identity$6, rescale()) : clamp !== identity$6;
   };
-  scale2.interpolate = function(_2) {
-    return arguments.length ? (interpolate2 = _2, rescale()) : interpolate2;
+  scale.interpolate = function(_2) {
+    return arguments.length ? (interpolate$1 = _2, rescale()) : interpolate$1;
   };
-  scale2.unknown = function(_2) {
-    return arguments.length ? (unknown = _2, scale2) : unknown;
+  scale.unknown = function(_2) {
+    return arguments.length ? (unknown = _2, scale) : unknown;
   };
   return function(t3, u2) {
     transform = t3, untransform = u2;
@@ -44902,14 +45747,14 @@ function identity$5(x3) {
 }
 var map$3 = Array.prototype.map, prefixes = ["y", "z", "a", "f", "p", "n", "µ", "m", "", "k", "M", "G", "T", "P", "E", "Z", "Y"];
 function formatLocale$1(locale2) {
-  var group = locale2.grouping === void 0 || locale2.thousands === void 0 ? identity$5 : formatGroup(map$3.call(locale2.grouping, Number), locale2.thousands + ""), currencyPrefix = locale2.currency === void 0 ? "" : locale2.currency[0] + "", currencySuffix = locale2.currency === void 0 ? "" : locale2.currency[1] + "", decimal = locale2.decimal === void 0 ? "." : locale2.decimal + "", numerals = locale2.numerals === void 0 ? identity$5 : formatNumerals(map$3.call(locale2.numerals, String)), percent2 = locale2.percent === void 0 ? "%" : locale2.percent + "", minus = locale2.minus === void 0 ? "−" : locale2.minus + "", nan = locale2.nan === void 0 ? "NaN" : locale2.nan + "";
+  var group = locale2.grouping === void 0 || locale2.thousands === void 0 ? identity$5 : formatGroup(map$3.call(locale2.grouping, Number), locale2.thousands + ""), currencyPrefix = locale2.currency === void 0 ? "" : locale2.currency[0] + "", currencySuffix = locale2.currency === void 0 ? "" : locale2.currency[1] + "", decimal = locale2.decimal === void 0 ? "." : locale2.decimal + "", numerals = locale2.numerals === void 0 ? identity$5 : formatNumerals(map$3.call(locale2.numerals, String)), percent = locale2.percent === void 0 ? "%" : locale2.percent + "", minus = locale2.minus === void 0 ? "−" : locale2.minus + "", nan = locale2.nan === void 0 ? "NaN" : locale2.nan + "";
   function newFormat(specifier, options) {
     specifier = formatSpecifier(specifier);
     var fill = specifier.fill, align = specifier.align, sign2 = specifier.sign, symbol = specifier.symbol, zero2 = specifier.zero, width = specifier.width, comma = specifier.comma, precision = specifier.precision, trim = specifier.trim, type = specifier.type;
     if (type === "n") comma = true, type = "g";
     else if (!formatTypes[type]) precision === void 0 && (precision = 12), trim = true, type = "g";
     if (zero2 || fill === "0" && align === "=") zero2 = true, fill = "0", align = "=";
-    var prefix2 = (options && options.prefix !== void 0 ? options.prefix : "") + (symbol === "$" ? currencyPrefix : symbol === "#" && /[boxX]/.test(type) ? "0" + type.toLowerCase() : ""), suffix2 = (symbol === "$" ? currencySuffix : /[%p]/.test(type) ? percent2 : "") + (options && options.suffix !== void 0 ? options.suffix : "");
+    var prefix2 = (options && options.prefix !== void 0 ? options.prefix : "") + (symbol === "$" ? currencyPrefix : symbol === "#" && /[boxX]/.test(type) ? "0" + type.toLowerCase() : ""), suffix2 = (symbol === "$" ? currencySuffix : /[%p]/.test(type) ? percent : "") + (options && options.suffix !== void 0 ? options.suffix : "");
     var formatType = formatTypes[type], maybeSuffix = /[defgprs%]/.test(type);
     precision = precision === void 0 ? 6 : /[gprs]/.test(type) ? Math.max(1, Math.min(21, precision)) : Math.max(0, Math.min(20, precision));
     function format2(value) {
@@ -45020,17 +45865,17 @@ function tickFormat(start, stop, count2, specifier) {
   }
   return format(specifier);
 }
-function linearish(scale2) {
-  var domain = scale2.domain;
-  scale2.ticks = function(count2) {
+function linearish(scale) {
+  var domain = scale.domain;
+  scale.ticks = function(count2) {
     var d2 = domain();
     return ticks(d2[0], d2[d2.length - 1], count2 == null ? 10 : count2);
   };
-  scale2.tickFormat = function(count2, specifier) {
+  scale.tickFormat = function(count2, specifier) {
     var d2 = domain();
     return tickFormat(d2[0], d2[d2.length - 1], count2 == null ? 10 : count2, specifier);
   };
-  scale2.nice = function(count2) {
+  scale.nice = function(count2) {
     if (count2 == null) count2 = 10;
     var d2 = domain();
     var i0 = 0;
@@ -45061,35 +45906,35 @@ function linearish(scale2) {
       }
       prestep = step;
     }
-    return scale2;
+    return scale;
   };
-  return scale2;
+  return scale;
 }
 function linear() {
-  var scale2 = continuous();
-  scale2.copy = function() {
-    return copy$1(scale2, linear());
+  var scale = continuous();
+  scale.copy = function() {
+    return copy$1(scale, linear());
   };
-  initRange.apply(scale2, arguments);
-  return linearish(scale2);
+  initRange.apply(scale, arguments);
+  return linearish(scale);
 }
 function identity$4(domain) {
   var unknown;
-  function scale2(x3) {
+  function scale(x3) {
     return x3 == null || isNaN(x3 = +x3) ? unknown : x3;
   }
-  scale2.invert = scale2;
-  scale2.domain = scale2.range = function(_2) {
-    return arguments.length ? (domain = Array.from(_2, number$2), scale2) : domain.slice();
+  scale.invert = scale;
+  scale.domain = scale.range = function(_2) {
+    return arguments.length ? (domain = Array.from(_2, number$1), scale) : domain.slice();
   };
-  scale2.unknown = function(_2) {
-    return arguments.length ? (unknown = _2, scale2) : unknown;
+  scale.unknown = function(_2) {
+    return arguments.length ? (unknown = _2, scale) : unknown;
   };
-  scale2.copy = function() {
+  scale.copy = function() {
     return identity$4(domain).unknown(unknown);
   };
-  domain = arguments.length ? Array.from(domain, number$2) : [0, 1];
-  return linearish(scale2);
+  domain = arguments.length ? Array.from(domain, number$1) : [0, 1];
+  return linearish(scale);
 }
 function nice(domain, interval) {
   domain = domain.slice();
@@ -45127,8 +45972,8 @@ function reflect(f2) {
   return (x3, k2) => -f2(-x3, k2);
 }
 function loggish(transform) {
-  const scale2 = transform(transformLog, transformExp);
-  const domain = scale2.domain;
+  const scale = transform(transformLog, transformExp);
+  const domain = scale.domain;
   let base = 10;
   let logs;
   let pows;
@@ -45140,15 +45985,15 @@ function loggish(transform) {
     } else {
       transform(transformLog, transformExp);
     }
-    return scale2;
+    return scale;
   }
-  scale2.base = function(_2) {
+  scale.base = function(_2) {
     return arguments.length ? (base = +_2, rescale()) : base;
   };
-  scale2.domain = function(_2) {
+  scale.domain = function(_2) {
     return arguments.length ? (domain(_2), rescale()) : domain();
   };
-  scale2.ticks = (count2) => {
+  scale.ticks = (count2) => {
     const d2 = domain();
     let u2 = d2[0];
     let v2 = d2[d2.length - 1];
@@ -45184,7 +46029,7 @@ function loggish(transform) {
     }
     return r2 ? z2.reverse() : z2;
   };
-  scale2.tickFormat = (count2, specifier) => {
+  scale.tickFormat = (count2, specifier) => {
     if (count2 == null) count2 = 10;
     if (specifier == null) specifier = base === 10 ? "s" : ",";
     if (typeof specifier !== "function") {
@@ -45192,26 +46037,26 @@ function loggish(transform) {
       specifier = format(specifier);
     }
     if (count2 === Infinity) return specifier;
-    const k2 = Math.max(1, base * count2 / scale2.ticks().length);
+    const k2 = Math.max(1, base * count2 / scale.ticks().length);
     return (d2) => {
       let i2 = d2 / pows(Math.round(logs(d2)));
       if (i2 * base < base - 0.5) i2 *= base;
       return i2 <= k2 ? specifier(d2) : "";
     };
   };
-  scale2.nice = () => {
+  scale.nice = () => {
     return domain(nice(domain(), {
       floor: (x3) => pows(Math.floor(logs(x3))),
       ceil: (x3) => pows(Math.ceil(logs(x3)))
     }));
   };
-  return scale2;
+  return scale;
 }
 function log() {
-  const scale2 = loggish(transformer$2()).domain([1, 10]);
-  scale2.copy = () => copy$1(scale2, log()).base(scale2.base());
-  initRange.apply(scale2, arguments);
-  return scale2;
+  const scale = loggish(transformer$2()).domain([1, 10]);
+  scale.copy = () => copy$1(scale, log()).base(scale.base());
+  initRange.apply(scale, arguments);
+  return scale;
 }
 function transformSymlog(c2) {
   return function(x3) {
@@ -45224,18 +46069,18 @@ function transformSymexp(c2) {
   };
 }
 function symlogish(transform) {
-  var c2 = 1, scale2 = transform(transformSymlog(c2), transformSymexp(c2));
-  scale2.constant = function(_2) {
+  var c2 = 1, scale = transform(transformSymlog(c2), transformSymexp(c2));
+  scale.constant = function(_2) {
     return arguments.length ? transform(transformSymlog(c2 = +_2), transformSymexp(c2)) : c2;
   };
-  return linearish(scale2);
+  return linearish(scale);
 }
 function symlog() {
-  var scale2 = symlogish(transformer$2());
-  scale2.copy = function() {
-    return copy$1(scale2, symlog()).constant(scale2.constant());
+  var scale = symlogish(transformer$2());
+  scale.copy = function() {
+    return copy$1(scale, symlog()).constant(scale.constant());
   };
-  return initRange.apply(scale2, arguments);
+  return initRange.apply(scale, arguments);
 }
 function transformPow(exponent2) {
   return function(x3) {
@@ -45249,22 +46094,22 @@ function transformSquare(x3) {
   return x3 < 0 ? -x3 * x3 : x3 * x3;
 }
 function powish(transform) {
-  var scale2 = transform(identity$6, identity$6), exponent2 = 1;
+  var scale = transform(identity$6, identity$6), exponent2 = 1;
   function rescale() {
     return exponent2 === 1 ? transform(identity$6, identity$6) : exponent2 === 0.5 ? transform(transformSqrt, transformSquare) : transform(transformPow(exponent2), transformPow(1 / exponent2));
   }
-  scale2.exponent = function(_2) {
+  scale.exponent = function(_2) {
     return arguments.length ? (exponent2 = +_2, rescale()) : exponent2;
   };
-  return linearish(scale2);
+  return linearish(scale);
 }
 function pow() {
-  var scale2 = powish(transformer$2());
-  scale2.copy = function() {
-    return copy$1(scale2, pow()).exponent(scale2.exponent());
+  var scale = powish(transformer$2());
+  scale.copy = function() {
+    return copy$1(scale, pow()).exponent(scale.exponent());
   };
-  initRange.apply(scale2, arguments);
-  return scale2;
+  initRange.apply(scale, arguments);
+  return scale;
 }
 function sqrt() {
   return pow.apply(null, arguments).exponent(0.5);
@@ -45277,36 +46122,36 @@ function unsquare(x3) {
 }
 function radial() {
   var squared = continuous(), range3 = [0, 1], round2 = false, unknown;
-  function scale2(x3) {
+  function scale(x3) {
     var y2 = unsquare(squared(x3));
     return isNaN(y2) ? unknown : round2 ? Math.round(y2) : y2;
   }
-  scale2.invert = function(y2) {
+  scale.invert = function(y2) {
     return squared.invert(square(y2));
   };
-  scale2.domain = function(_2) {
-    return arguments.length ? (squared.domain(_2), scale2) : squared.domain();
+  scale.domain = function(_2) {
+    return arguments.length ? (squared.domain(_2), scale) : squared.domain();
   };
-  scale2.range = function(_2) {
-    return arguments.length ? (squared.range((range3 = Array.from(_2, number$2)).map(square)), scale2) : range3.slice();
+  scale.range = function(_2) {
+    return arguments.length ? (squared.range((range3 = Array.from(_2, number$1)).map(square)), scale) : range3.slice();
   };
-  scale2.rangeRound = function(_2) {
-    return scale2.range(_2).round(true);
+  scale.rangeRound = function(_2) {
+    return scale.range(_2).round(true);
   };
-  scale2.round = function(_2) {
-    return arguments.length ? (round2 = !!_2, scale2) : round2;
+  scale.round = function(_2) {
+    return arguments.length ? (round2 = !!_2, scale) : round2;
   };
-  scale2.clamp = function(_2) {
-    return arguments.length ? (squared.clamp(_2), scale2) : squared.clamp();
+  scale.clamp = function(_2) {
+    return arguments.length ? (squared.clamp(_2), scale) : squared.clamp();
   };
-  scale2.unknown = function(_2) {
-    return arguments.length ? (unknown = _2, scale2) : unknown;
+  scale.unknown = function(_2) {
+    return arguments.length ? (unknown = _2, scale) : unknown;
   };
-  scale2.copy = function() {
+  scale.copy = function() {
     return radial(squared.domain(), range3).round(round2).clamp(squared.clamp()).unknown(unknown);
   };
-  initRange.apply(scale2, arguments);
-  return linearish(scale2);
+  initRange.apply(scale, arguments);
+  return linearish(scale);
 }
 function quantile() {
   var domain = [], range3 = [], thresholds = [], unknown;
@@ -45314,93 +46159,93 @@ function quantile() {
     var i2 = 0, n2 = Math.max(1, range3.length);
     thresholds = new Array(n2 - 1);
     while (++i2 < n2) thresholds[i2 - 1] = quantileSorted(domain, i2 / n2);
-    return scale2;
+    return scale;
   }
-  function scale2(x3) {
+  function scale(x3) {
     return x3 == null || isNaN(x3 = +x3) ? unknown : range3[bisectRight(thresholds, x3)];
   }
-  scale2.invertExtent = function(y2) {
+  scale.invertExtent = function(y2) {
     var i2 = range3.indexOf(y2);
     return i2 < 0 ? [NaN, NaN] : [
       i2 > 0 ? thresholds[i2 - 1] : domain[0],
       i2 < thresholds.length ? thresholds[i2] : domain[domain.length - 1]
     ];
   };
-  scale2.domain = function(_2) {
+  scale.domain = function(_2) {
     if (!arguments.length) return domain.slice();
     domain = [];
     for (let d2 of _2) if (d2 != null && !isNaN(d2 = +d2)) domain.push(d2);
     domain.sort(ascending);
     return rescale();
   };
-  scale2.range = function(_2) {
+  scale.range = function(_2) {
     return arguments.length ? (range3 = Array.from(_2), rescale()) : range3.slice();
   };
-  scale2.unknown = function(_2) {
-    return arguments.length ? (unknown = _2, scale2) : unknown;
+  scale.unknown = function(_2) {
+    return arguments.length ? (unknown = _2, scale) : unknown;
   };
-  scale2.quantiles = function() {
+  scale.quantiles = function() {
     return thresholds.slice();
   };
-  scale2.copy = function() {
+  scale.copy = function() {
     return quantile().domain(domain).range(range3).unknown(unknown);
   };
-  return initRange.apply(scale2, arguments);
+  return initRange.apply(scale, arguments);
 }
 function quantize() {
   var x0 = 0, x1 = 1, n2 = 1, domain = [0.5], range3 = [0, 1], unknown;
-  function scale2(x3) {
+  function scale(x3) {
     return x3 != null && x3 <= x3 ? range3[bisectRight(domain, x3, 0, n2)] : unknown;
   }
   function rescale() {
     var i2 = -1;
     domain = new Array(n2);
     while (++i2 < n2) domain[i2] = ((i2 + 1) * x1 - (i2 - n2) * x0) / (n2 + 1);
-    return scale2;
+    return scale;
   }
-  scale2.domain = function(_2) {
+  scale.domain = function(_2) {
     return arguments.length ? ([x0, x1] = _2, x0 = +x0, x1 = +x1, rescale()) : [x0, x1];
   };
-  scale2.range = function(_2) {
+  scale.range = function(_2) {
     return arguments.length ? (n2 = (range3 = Array.from(_2)).length - 1, rescale()) : range3.slice();
   };
-  scale2.invertExtent = function(y2) {
+  scale.invertExtent = function(y2) {
     var i2 = range3.indexOf(y2);
     return i2 < 0 ? [NaN, NaN] : i2 < 1 ? [x0, domain[0]] : i2 >= n2 ? [domain[n2 - 1], x1] : [domain[i2 - 1], domain[i2]];
   };
-  scale2.unknown = function(_2) {
-    return arguments.length ? (unknown = _2, scale2) : scale2;
+  scale.unknown = function(_2) {
+    return arguments.length ? (unknown = _2, scale) : scale;
   };
-  scale2.thresholds = function() {
+  scale.thresholds = function() {
     return domain.slice();
   };
-  scale2.copy = function() {
+  scale.copy = function() {
     return quantize().domain([x0, x1]).range(range3).unknown(unknown);
   };
-  return initRange.apply(linearish(scale2), arguments);
+  return initRange.apply(linearish(scale), arguments);
 }
 function threshold() {
   var domain = [0.5], range3 = [0, 1], unknown, n2 = 1;
-  function scale2(x3) {
+  function scale(x3) {
     return x3 != null && x3 <= x3 ? range3[bisectRight(domain, x3, 0, n2)] : unknown;
   }
-  scale2.domain = function(_2) {
-    return arguments.length ? (domain = Array.from(_2), n2 = Math.min(domain.length, range3.length - 1), scale2) : domain.slice();
+  scale.domain = function(_2) {
+    return arguments.length ? (domain = Array.from(_2), n2 = Math.min(domain.length, range3.length - 1), scale) : domain.slice();
   };
-  scale2.range = function(_2) {
-    return arguments.length ? (range3 = Array.from(_2), n2 = Math.min(domain.length, range3.length - 1), scale2) : range3.slice();
+  scale.range = function(_2) {
+    return arguments.length ? (range3 = Array.from(_2), n2 = Math.min(domain.length, range3.length - 1), scale) : range3.slice();
   };
-  scale2.invertExtent = function(y2) {
+  scale.invertExtent = function(y2) {
     var i2 = range3.indexOf(y2);
     return [domain[i2 - 1], domain[i2]];
   };
-  scale2.unknown = function(_2) {
-    return arguments.length ? (unknown = _2, scale2) : unknown;
+  scale.unknown = function(_2) {
+    return arguments.length ? (unknown = _2, scale) : unknown;
   };
-  scale2.copy = function() {
+  scale.copy = function() {
     return threshold().domain(domain).range(range3).unknown(unknown);
   };
-  return initRange.apply(scale2, arguments);
+  return initRange.apply(scale, arguments);
 }
 const t0 = /* @__PURE__ */ new Date(), t1 = /* @__PURE__ */ new Date();
 function timeInterval(floori, offseti, count2, field) {
@@ -45431,17 +46276,17 @@ function timeInterval(floori, offseti, count2, field) {
     while (previous < start && start < stop);
     return range3;
   };
-  interval.filter = (test2) => {
+  interval.filter = (test) => {
     return timeInterval((date2) => {
-      if (date2 >= date2) while (floori(date2), !test2(date2)) date2.setTime(date2 - 1);
+      if (date2 >= date2) while (floori(date2), !test(date2)) date2.setTime(date2 - 1);
     }, (date2, step) => {
       if (date2 >= date2) {
         if (step < 0) while (++step <= 0) {
-          while (offseti(date2, -1), !test2(date2)) {
+          while (offseti(date2, -1), !test(date2)) {
           }
         }
         else while (--step >= 0) {
-          while (offseti(date2, 1), !test2(date2)) {
+          while (offseti(date2, 1), !test(date2)) {
           }
         }
       }
@@ -46273,191 +47118,191 @@ function defaultLocale(definition) {
 function date(t3) {
   return new Date(t3);
 }
-function number$1(t3) {
+function number(t3) {
   return t3 instanceof Date ? +t3 : +/* @__PURE__ */ new Date(+t3);
 }
 function calendar(ticks2, tickInterval, year, month, week, day, hour, minute, second2, format2) {
-  var scale2 = continuous(), invert2 = scale2.invert, domain = scale2.domain;
+  var scale = continuous(), invert2 = scale.invert, domain = scale.domain;
   var formatMillisecond = format2(".%L"), formatSecond = format2(":%S"), formatMinute = format2("%I:%M"), formatHour = format2("%I %p"), formatDay = format2("%a %d"), formatWeek = format2("%b %d"), formatMonth = format2("%B"), formatYear2 = format2("%Y");
   function tickFormat2(date2) {
     return (second2(date2) < date2 ? formatMillisecond : minute(date2) < date2 ? formatSecond : hour(date2) < date2 ? formatMinute : day(date2) < date2 ? formatHour : month(date2) < date2 ? week(date2) < date2 ? formatDay : formatWeek : year(date2) < date2 ? formatMonth : formatYear2)(date2);
   }
-  scale2.invert = function(y2) {
+  scale.invert = function(y2) {
     return new Date(invert2(y2));
   };
-  scale2.domain = function(_2) {
-    return arguments.length ? domain(Array.from(_2, number$1)) : domain().map(date);
+  scale.domain = function(_2) {
+    return arguments.length ? domain(Array.from(_2, number)) : domain().map(date);
   };
-  scale2.ticks = function(interval) {
+  scale.ticks = function(interval) {
     var d2 = domain();
     return ticks2(d2[0], d2[d2.length - 1], interval == null ? 10 : interval);
   };
-  scale2.tickFormat = function(count2, specifier) {
+  scale.tickFormat = function(count2, specifier) {
     return specifier == null ? tickFormat2 : format2(specifier);
   };
-  scale2.nice = function(interval) {
+  scale.nice = function(interval) {
     var d2 = domain();
     if (!interval || typeof interval.range !== "function") interval = tickInterval(d2[0], d2[d2.length - 1], interval == null ? 10 : interval);
-    return interval ? domain(nice(d2, interval)) : scale2;
+    return interval ? domain(nice(d2, interval)) : scale;
   };
-  scale2.copy = function() {
-    return copy$1(scale2, calendar(ticks2, tickInterval, year, month, week, day, hour, minute, second2, format2));
+  scale.copy = function() {
+    return copy$1(scale, calendar(ticks2, tickInterval, year, month, week, day, hour, minute, second2, format2));
   };
-  return scale2;
+  return scale;
 }
-function time$1() {
+function time() {
   return initRange.apply(calendar(timeTicks, timeTickInterval, timeYear, timeMonth, timeSunday, timeDay, timeHour, timeMinute, second, timeFormat).domain([new Date(2e3, 0, 1), new Date(2e3, 0, 2)]), arguments);
 }
 function utcTime() {
   return initRange.apply(calendar(utcTicks, utcTickInterval, utcYear, utcMonth, utcSunday, utcDay, utcHour, utcMinute, second, utcFormat).domain([Date.UTC(2e3, 0, 1), Date.UTC(2e3, 0, 2)]), arguments);
 }
 function transformer$1() {
-  var x0 = 0, x1 = 1, t02, t12, k10, transform, interpolator = identity$6, clamp2 = false, unknown;
-  function scale2(x3) {
-    return x3 == null || isNaN(x3 = +x3) ? unknown : interpolator(k10 === 0 ? 0.5 : (x3 = (transform(x3) - t02) * k10, clamp2 ? Math.max(0, Math.min(1, x3)) : x3));
+  var x0 = 0, x1 = 1, t02, t12, k10, transform, interpolator = identity$6, clamp = false, unknown;
+  function scale(x3) {
+    return x3 == null || isNaN(x3 = +x3) ? unknown : interpolator(k10 === 0 ? 0.5 : (x3 = (transform(x3) - t02) * k10, clamp ? Math.max(0, Math.min(1, x3)) : x3));
   }
-  scale2.domain = function(_2) {
-    return arguments.length ? ([x0, x1] = _2, t02 = transform(x0 = +x0), t12 = transform(x1 = +x1), k10 = t02 === t12 ? 0 : 1 / (t12 - t02), scale2) : [x0, x1];
+  scale.domain = function(_2) {
+    return arguments.length ? ([x0, x1] = _2, t02 = transform(x0 = +x0), t12 = transform(x1 = +x1), k10 = t02 === t12 ? 0 : 1 / (t12 - t02), scale) : [x0, x1];
   };
-  scale2.clamp = function(_2) {
-    return arguments.length ? (clamp2 = !!_2, scale2) : clamp2;
+  scale.clamp = function(_2) {
+    return arguments.length ? (clamp = !!_2, scale) : clamp;
   };
-  scale2.interpolator = function(_2) {
-    return arguments.length ? (interpolator = _2, scale2) : interpolator;
+  scale.interpolator = function(_2) {
+    return arguments.length ? (interpolator = _2, scale) : interpolator;
   };
   function range3(interpolate2) {
     return function(_2) {
       var r0, r1;
-      return arguments.length ? ([r0, r1] = _2, interpolator = interpolate2(r0, r1), scale2) : [interpolator(0), interpolator(1)];
+      return arguments.length ? ([r0, r1] = _2, interpolator = interpolate2(r0, r1), scale) : [interpolator(0), interpolator(1)];
     };
   }
-  scale2.range = range3(interpolate$1);
-  scale2.rangeRound = range3(interpolateRound);
-  scale2.unknown = function(_2) {
-    return arguments.length ? (unknown = _2, scale2) : unknown;
+  scale.range = range3(interpolate);
+  scale.rangeRound = range3(interpolateRound);
+  scale.unknown = function(_2) {
+    return arguments.length ? (unknown = _2, scale) : unknown;
   };
   return function(t3) {
     transform = t3, t02 = t3(x0), t12 = t3(x1), k10 = t02 === t12 ? 0 : 1 / (t12 - t02);
-    return scale2;
+    return scale;
   };
 }
 function copy(source, target) {
   return target.domain(source.domain()).interpolator(source.interpolator()).clamp(source.clamp()).unknown(source.unknown());
 }
 function sequential() {
-  var scale2 = linearish(transformer$1()(identity$6));
-  scale2.copy = function() {
-    return copy(scale2, sequential());
+  var scale = linearish(transformer$1()(identity$6));
+  scale.copy = function() {
+    return copy(scale, sequential());
   };
-  return initInterpolator.apply(scale2, arguments);
+  return initInterpolator.apply(scale, arguments);
 }
 function sequentialLog() {
-  var scale2 = loggish(transformer$1()).domain([1, 10]);
-  scale2.copy = function() {
-    return copy(scale2, sequentialLog()).base(scale2.base());
+  var scale = loggish(transformer$1()).domain([1, 10]);
+  scale.copy = function() {
+    return copy(scale, sequentialLog()).base(scale.base());
   };
-  return initInterpolator.apply(scale2, arguments);
+  return initInterpolator.apply(scale, arguments);
 }
 function sequentialSymlog() {
-  var scale2 = symlogish(transformer$1());
-  scale2.copy = function() {
-    return copy(scale2, sequentialSymlog()).constant(scale2.constant());
+  var scale = symlogish(transformer$1());
+  scale.copy = function() {
+    return copy(scale, sequentialSymlog()).constant(scale.constant());
   };
-  return initInterpolator.apply(scale2, arguments);
+  return initInterpolator.apply(scale, arguments);
 }
 function sequentialPow() {
-  var scale2 = powish(transformer$1());
-  scale2.copy = function() {
-    return copy(scale2, sequentialPow()).exponent(scale2.exponent());
+  var scale = powish(transformer$1());
+  scale.copy = function() {
+    return copy(scale, sequentialPow()).exponent(scale.exponent());
   };
-  return initInterpolator.apply(scale2, arguments);
+  return initInterpolator.apply(scale, arguments);
 }
 function sequentialSqrt() {
   return sequentialPow.apply(null, arguments).exponent(0.5);
 }
 function sequentialQuantile() {
   var domain = [], interpolator = identity$6;
-  function scale2(x3) {
+  function scale(x3) {
     if (x3 != null && !isNaN(x3 = +x3)) return interpolator((bisectRight(domain, x3, 1) - 1) / (domain.length - 1));
   }
-  scale2.domain = function(_2) {
+  scale.domain = function(_2) {
     if (!arguments.length) return domain.slice();
     domain = [];
     for (let d2 of _2) if (d2 != null && !isNaN(d2 = +d2)) domain.push(d2);
     domain.sort(ascending);
-    return scale2;
+    return scale;
   };
-  scale2.interpolator = function(_2) {
-    return arguments.length ? (interpolator = _2, scale2) : interpolator;
+  scale.interpolator = function(_2) {
+    return arguments.length ? (interpolator = _2, scale) : interpolator;
   };
-  scale2.range = function() {
+  scale.range = function() {
     return domain.map((d2, i2) => interpolator(i2 / (domain.length - 1)));
   };
-  scale2.quantiles = function(n2) {
+  scale.quantiles = function(n2) {
     return Array.from({ length: n2 + 1 }, (_2, i2) => quantile$1(domain, i2 / n2));
   };
-  scale2.copy = function() {
+  scale.copy = function() {
     return sequentialQuantile(interpolator).domain(domain);
   };
-  return initInterpolator.apply(scale2, arguments);
+  return initInterpolator.apply(scale, arguments);
 }
 function transformer() {
-  var x0 = 0, x1 = 0.5, x22 = 1, s2 = 1, t02, t12, t22, k10, k21, interpolator = identity$6, transform, clamp2 = false, unknown;
-  function scale2(x3) {
-    return isNaN(x3 = +x3) ? unknown : (x3 = 0.5 + ((x3 = +transform(x3)) - t12) * (s2 * x3 < s2 * t12 ? k10 : k21), interpolator(clamp2 ? Math.max(0, Math.min(1, x3)) : x3));
+  var x0 = 0, x1 = 0.5, x22 = 1, s2 = 1, t02, t12, t22, k10, k21, interpolator = identity$6, transform, clamp = false, unknown;
+  function scale(x3) {
+    return isNaN(x3 = +x3) ? unknown : (x3 = 0.5 + ((x3 = +transform(x3)) - t12) * (s2 * x3 < s2 * t12 ? k10 : k21), interpolator(clamp ? Math.max(0, Math.min(1, x3)) : x3));
   }
-  scale2.domain = function(_2) {
-    return arguments.length ? ([x0, x1, x22] = _2, t02 = transform(x0 = +x0), t12 = transform(x1 = +x1), t22 = transform(x22 = +x22), k10 = t02 === t12 ? 0 : 0.5 / (t12 - t02), k21 = t12 === t22 ? 0 : 0.5 / (t22 - t12), s2 = t12 < t02 ? -1 : 1, scale2) : [x0, x1, x22];
+  scale.domain = function(_2) {
+    return arguments.length ? ([x0, x1, x22] = _2, t02 = transform(x0 = +x0), t12 = transform(x1 = +x1), t22 = transform(x22 = +x22), k10 = t02 === t12 ? 0 : 0.5 / (t12 - t02), k21 = t12 === t22 ? 0 : 0.5 / (t22 - t12), s2 = t12 < t02 ? -1 : 1, scale) : [x0, x1, x22];
   };
-  scale2.clamp = function(_2) {
-    return arguments.length ? (clamp2 = !!_2, scale2) : clamp2;
+  scale.clamp = function(_2) {
+    return arguments.length ? (clamp = !!_2, scale) : clamp;
   };
-  scale2.interpolator = function(_2) {
-    return arguments.length ? (interpolator = _2, scale2) : interpolator;
+  scale.interpolator = function(_2) {
+    return arguments.length ? (interpolator = _2, scale) : interpolator;
   };
   function range3(interpolate2) {
     return function(_2) {
       var r0, r1, r2;
-      return arguments.length ? ([r0, r1, r2] = _2, interpolator = piecewise(interpolate2, [r0, r1, r2]), scale2) : [interpolator(0), interpolator(0.5), interpolator(1)];
+      return arguments.length ? ([r0, r1, r2] = _2, interpolator = piecewise(interpolate2, [r0, r1, r2]), scale) : [interpolator(0), interpolator(0.5), interpolator(1)];
     };
   }
-  scale2.range = range3(interpolate$1);
-  scale2.rangeRound = range3(interpolateRound);
-  scale2.unknown = function(_2) {
-    return arguments.length ? (unknown = _2, scale2) : unknown;
+  scale.range = range3(interpolate);
+  scale.rangeRound = range3(interpolateRound);
+  scale.unknown = function(_2) {
+    return arguments.length ? (unknown = _2, scale) : unknown;
   };
   return function(t3) {
     transform = t3, t02 = t3(x0), t12 = t3(x1), t22 = t3(x22), k10 = t02 === t12 ? 0 : 0.5 / (t12 - t02), k21 = t12 === t22 ? 0 : 0.5 / (t22 - t12), s2 = t12 < t02 ? -1 : 1;
-    return scale2;
+    return scale;
   };
 }
 function diverging() {
-  var scale2 = linearish(transformer()(identity$6));
-  scale2.copy = function() {
-    return copy(scale2, diverging());
+  var scale = linearish(transformer()(identity$6));
+  scale.copy = function() {
+    return copy(scale, diverging());
   };
-  return initInterpolator.apply(scale2, arguments);
+  return initInterpolator.apply(scale, arguments);
 }
 function divergingLog() {
-  var scale2 = loggish(transformer()).domain([0.1, 1, 10]);
-  scale2.copy = function() {
-    return copy(scale2, divergingLog()).base(scale2.base());
+  var scale = loggish(transformer()).domain([0.1, 1, 10]);
+  scale.copy = function() {
+    return copy(scale, divergingLog()).base(scale.base());
   };
-  return initInterpolator.apply(scale2, arguments);
+  return initInterpolator.apply(scale, arguments);
 }
 function divergingSymlog() {
-  var scale2 = symlogish(transformer());
-  scale2.copy = function() {
-    return copy(scale2, divergingSymlog()).constant(scale2.constant());
+  var scale = symlogish(transformer());
+  scale.copy = function() {
+    return copy(scale, divergingSymlog()).constant(scale.constant());
   };
-  return initInterpolator.apply(scale2, arguments);
+  return initInterpolator.apply(scale, arguments);
 }
 function divergingPow() {
-  var scale2 = powish(transformer());
-  scale2.copy = function() {
-    return copy(scale2, divergingPow()).exponent(scale2.exponent());
+  var scale = powish(transformer());
+  scale.copy = function() {
+    return copy(scale, divergingPow()).exponent(scale.exponent());
   };
-  return initInterpolator.apply(scale2, arguments);
+  return initInterpolator.apply(scale, arguments);
 }
 function divergingSqrt() {
   return divergingPow.apply(null, arguments).exponent(0.5);
@@ -46489,7 +47334,7 @@ const d3Scales = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProp
   scaleSqrt: sqrt,
   scaleSymlog: symlog,
   scaleThreshold: threshold,
-  scaleTime: time$1,
+  scaleTime: time,
   scaleUtc: utcTime,
   tickFormat
 }, Symbol.toStringTag, { value: "Module" }));
@@ -48034,9 +48879,9 @@ var ErrorBar = /* @__PURE__ */ function(_React$Component) {
   return _createClass$d(ErrorBar2, [{
     key: "render",
     value: function render() {
-      var _this$props = this.props, offset = _this$props.offset, layout2 = _this$props.layout, width = _this$props.width, dataKey = _this$props.dataKey, data = _this$props.data, dataPointFormatter = _this$props.dataPointFormatter, xAxis = _this$props.xAxis, yAxis = _this$props.yAxis, others = _objectWithoutProperties$b(_this$props, _excluded$b);
-      var svgProps = filterProps$1(others, false);
-      !!(this.props.direction === "x" && xAxis.type !== "number") ? invariant$1(false) : void 0;
+      var _this$props = this.props, offset = _this$props.offset, layout = _this$props.layout, width = _this$props.width, dataKey = _this$props.dataKey, data = _this$props.data, dataPointFormatter = _this$props.dataPointFormatter, xAxis = _this$props.xAxis, yAxis = _this$props.yAxis, others = _objectWithoutProperties$b(_this$props, _excluded$b);
+      var svgProps = filterProps(others, false);
+      !!(this.props.direction === "x" && xAxis.type !== "number") ? invariant(false) : void 0;
       var errorBars = data.map(function(entry) {
         var _dataPointFormatter = dataPointFormatter(entry, dataKey), x3 = _dataPointFormatter.x, y2 = _dataPointFormatter.y, value = _dataPointFormatter.value, errorVal = _dataPointFormatter.errorVal;
         if (!errorVal) {
@@ -48051,13 +48896,13 @@ var ErrorBar = /* @__PURE__ */ function(_React$Component) {
         } else {
           lowBound = highBound = errorVal;
         }
-        if (layout2 === "vertical") {
-          var scale2 = xAxis.scale;
+        if (layout === "vertical") {
+          var scale = xAxis.scale;
           var yMid = y2 + offset;
           var yMin = yMid + width;
           var yMax = yMid - width;
-          var xMin = scale2(value - lowBound);
-          var xMax = scale2(value + highBound);
+          var xMin = scale(value - lowBound);
+          var xMax = scale(value + highBound);
           lineCoordinates.push({
             x1: xMax,
             y1: yMin,
@@ -48076,7 +48921,7 @@ var ErrorBar = /* @__PURE__ */ function(_React$Component) {
             x2: xMin,
             y2: yMax
           });
-        } else if (layout2 === "horizontal") {
+        } else if (layout === "horizontal") {
           var _scale = yAxis.scale;
           var xMid = x3 + offset;
           var _xMin = xMid - width;
@@ -48528,24 +49373,24 @@ var appendOffsetOfLegend = function appendOffsetOfLegend2(offset, _unused, props
   });
   if (legendProps) {
     var _ref4 = legendBox || {}, boxWidth = _ref4.width, boxHeight = _ref4.height;
-    var align = legendProps.align, verticalAlign = legendProps.verticalAlign, layout2 = legendProps.layout;
-    if ((layout2 === "vertical" || layout2 === "horizontal" && verticalAlign === "middle") && align !== "center" && isNumber(offset[align])) {
+    var align = legendProps.align, verticalAlign = legendProps.verticalAlign, layout = legendProps.layout;
+    if ((layout === "vertical" || layout === "horizontal" && verticalAlign === "middle") && align !== "center" && isNumber(offset[align])) {
       return _objectSpread$q(_objectSpread$q({}, offset), {}, _defineProperty$t({}, align, offset[align] + (boxWidth || 0)));
     }
-    if ((layout2 === "horizontal" || layout2 === "vertical" && align === "center") && verticalAlign !== "middle" && isNumber(offset[verticalAlign])) {
+    if ((layout === "horizontal" || layout === "vertical" && align === "center") && verticalAlign !== "middle" && isNumber(offset[verticalAlign])) {
       return _objectSpread$q(_objectSpread$q({}, offset), {}, _defineProperty$t({}, verticalAlign, offset[verticalAlign] + (boxHeight || 0)));
     }
   }
   return offset;
 };
-var isErrorBarRelevantForAxis = function isErrorBarRelevantForAxis2(layout2, axisType, direction) {
+var isErrorBarRelevantForAxis = function isErrorBarRelevantForAxis2(layout, axisType, direction) {
   if (isNil$1(axisType)) {
     return true;
   }
-  if (layout2 === "horizontal") {
+  if (layout === "horizontal") {
     return axisType === "yAxis";
   }
-  if (layout2 === "vertical") {
+  if (layout === "vertical") {
     return axisType === "xAxis";
   }
   if (direction === "x") {
@@ -48556,10 +49401,10 @@ var isErrorBarRelevantForAxis = function isErrorBarRelevantForAxis2(layout2, axi
   }
   return true;
 };
-var getDomainOfErrorBars = function getDomainOfErrorBars2(data, item, dataKey, layout2, axisType) {
+var getDomainOfErrorBars = function getDomainOfErrorBars2(data, item, dataKey, layout, axisType) {
   var children = item.props.children;
   var errorBars = findAllByType(children, ErrorBar).filter(function(errorBarChild) {
-    return isErrorBarRelevantForAxis(layout2, axisType, errorBarChild.props.direction);
+    return isErrorBarRelevantForAxis(layout, axisType, errorBarChild.props.direction);
   });
   if (errorBars && errorBars.length) {
     var keys2 = errorBars.map(function(errorBarChild) {
@@ -48580,9 +49425,9 @@ var getDomainOfErrorBars = function getDomainOfErrorBars2(data, item, dataKey, l
   }
   return null;
 };
-var parseErrorBarsOfAxis = function parseErrorBarsOfAxis2(data, items, dataKey, axisType, layout2) {
+var parseErrorBarsOfAxis = function parseErrorBarsOfAxis2(data, items, dataKey, axisType, layout) {
   var domains = items.map(function(item) {
-    return getDomainOfErrorBars(data, item, dataKey, layout2, axisType);
+    return getDomainOfErrorBars(data, item, dataKey, layout, axisType);
   }).filter(function(entry) {
     return !isNil$1(entry);
   });
@@ -48593,11 +49438,11 @@ var parseErrorBarsOfAxis = function parseErrorBarsOfAxis2(data, items, dataKey, 
   }
   return null;
 };
-var getDomainOfItemsWithSameAxis = function getDomainOfItemsWithSameAxis2(data, items, type, layout2, filterNil) {
+var getDomainOfItemsWithSameAxis = function getDomainOfItemsWithSameAxis2(data, items, type, layout, filterNil) {
   var domains = items.map(function(item) {
     var dataKey = item.props.dataKey;
     if (type === "number" && dataKey) {
-      return getDomainOfErrorBars(data, item, dataKey, layout2) || getDomainOfDataByKey(data, dataKey, type, filterNil);
+      return getDomainOfErrorBars(data, item, dataKey, layout) || getDomainOfDataByKey(data, dataKey, type, filterNil);
     }
     return getDomainOfDataByKey(data, dataKey, type, filterNil);
   });
@@ -48622,8 +49467,8 @@ var getDomainOfItemsWithSameAxis = function getDomainOfItemsWithSameAxis2(data, 
     return result;
   }, []);
 };
-var isCategoricalAxis = function isCategoricalAxis2(layout2, axisType) {
-  return layout2 === "horizontal" && axisType === "xAxis" || layout2 === "vertical" && axisType === "yAxis" || layout2 === "centric" && axisType === "angleAxis" || layout2 === "radial" && axisType === "radiusAxis";
+var isCategoricalAxis = function isCategoricalAxis2(layout, axisType) {
+  return layout === "horizontal" && axisType === "xAxis" || layout === "vertical" && axisType === "yAxis" || layout === "centric" && axisType === "angleAxis" || layout === "radial" && axisType === "radiusAxis";
 };
 var getCoordinatesOfGrid = function getCoordinatesOfGrid2(ticks2, minValue, maxValue, syncWithTicks) {
   if (syncWithTicks) {
@@ -48651,10 +49496,10 @@ var getCoordinatesOfGrid = function getCoordinatesOfGrid2(ticks2, minValue, maxV
 };
 var getTicksOfAxis = function getTicksOfAxis2(axis, isGrid, isAll) {
   if (!axis) return null;
-  var scale2 = axis.scale;
+  var scale = axis.scale;
   var duplicateDomain = axis.duplicateDomain, type = axis.type, range3 = axis.range;
-  var offsetForBand = axis.realScaleType === "scaleBand" ? scale2.bandwidth() / 2 : 2;
-  var offset = (isGrid || isAll) && type === "category" && scale2.bandwidth ? scale2.bandwidth() / offsetForBand : 0;
+  var offsetForBand = axis.realScaleType === "scaleBand" ? scale.bandwidth() / 2 : 2;
+  var offset = (isGrid || isAll) && type === "category" && scale.bandwidth ? scale.bandwidth() / offsetForBand : 0;
   offset = axis.axisType === "angleAxis" && (range3 === null || range3 === void 0 ? void 0 : range3.length) >= 2 ? mathSign(range3[0] - range3[1]) * 2 * offset : offset;
   if (isGrid && (axis.ticks || axis.niceTicks)) {
     var result = (axis.ticks || axis.niceTicks).map(function(entry) {
@@ -48662,7 +49507,7 @@ var getTicksOfAxis = function getTicksOfAxis2(axis, isGrid, isAll) {
       return {
         // If the scaleContent is not a number, the coordinate will be NaN.
         // That could be the case for example with a PointScale and a string as domain.
-        coordinate: scale2(scaleContent) + offset,
+        coordinate: scale(scaleContent) + offset,
         value: entry,
         offset
       };
@@ -48674,25 +49519,25 @@ var getTicksOfAxis = function getTicksOfAxis2(axis, isGrid, isAll) {
   if (axis.isCategorical && axis.categoricalDomain) {
     return axis.categoricalDomain.map(function(entry, index2) {
       return {
-        coordinate: scale2(entry) + offset,
+        coordinate: scale(entry) + offset,
         value: entry,
         index: index2,
         offset
       };
     });
   }
-  if (scale2.ticks && !isAll) {
-    return scale2.ticks(axis.tickCount).map(function(entry) {
+  if (scale.ticks && !isAll) {
+    return scale.ticks(axis.tickCount).map(function(entry) {
       return {
-        coordinate: scale2(entry) + offset,
+        coordinate: scale(entry) + offset,
         value: entry,
         offset
       };
     });
   }
-  return scale2.domain().map(function(entry, index2) {
+  return scale.domain().map(function(entry, index2) {
     return {
-      coordinate: scale2(entry) + offset,
+      coordinate: scale(entry) + offset,
       value: duplicateDomain ? duplicateDomain[entry] : entry,
       index: index2,
       offset
@@ -48719,15 +49564,15 @@ var combineEventHandlers = function combineEventHandlers2(defaultHandler, childH
   return combineHandler;
 };
 var parseScale = function parseScale2(axis, chartType, hasBar) {
-  var scale2 = axis.scale, type = axis.type, layout2 = axis.layout, axisType = axis.axisType;
-  if (scale2 === "auto") {
-    if (layout2 === "radial" && axisType === "radiusAxis") {
+  var scale = axis.scale, type = axis.type, layout = axis.layout, axisType = axis.axisType;
+  if (scale === "auto") {
+    if (layout === "radial" && axisType === "radiusAxis") {
       return {
         scale: band(),
         realScaleType: "band"
       };
     }
-    if (layout2 === "radial" && axisType === "angleAxis") {
+    if (layout === "radial" && axisType === "angleAxis") {
       return {
         scale: linear(),
         realScaleType: "linear"
@@ -48750,34 +49595,34 @@ var parseScale = function parseScale2(axis, chartType, hasBar) {
       realScaleType: "linear"
     };
   }
-  if (isString$2(scale2)) {
-    var name = "scale".concat(upperFirst$1(scale2));
+  if (isString$2(scale)) {
+    var name = "scale".concat(upperFirst$1(scale));
     return {
       scale: (d3Scales[name] || point)(),
       realScaleType: d3Scales[name] ? name : "point"
     };
   }
-  return isFunction$5(scale2) ? {
-    scale: scale2
+  return isFunction$5(scale) ? {
+    scale
   } : {
     scale: point(),
     realScaleType: "point"
   };
 };
 var EPS = 1e-4;
-var checkDomainOfScale = function checkDomainOfScale2(scale2) {
-  var domain = scale2.domain();
+var checkDomainOfScale = function checkDomainOfScale2(scale) {
+  var domain = scale.domain();
   if (!domain || domain.length <= 2) {
     return;
   }
   var len = domain.length;
-  var range3 = scale2.range();
+  var range3 = scale.range();
   var minValue = Math.min(range3[0], range3[1]) - EPS;
   var maxValue = Math.max(range3[0], range3[1]) + EPS;
-  var first = scale2(domain[0]);
-  var last2 = scale2(domain[len - 1]);
+  var first = scale(domain[0]);
+  var last2 = scale(domain[len - 1]);
   if (first < minValue || first > maxValue || last2 < minValue || last2 > maxValue) {
-    scale2.domain([domain[0], domain[len - 1]]);
+    scale.domain([domain[0], domain[len - 1]]);
   }
 };
 var findPositionOfBar = function findPositionOfBar2(barPosition, child) {
@@ -48930,25 +49775,25 @@ var getStackGroupsByAxisId = function getStackGroupsByAxisId2(data, _items, nume
     return _objectSpread$q(_objectSpread$q({}, result), {}, _defineProperty$t({}, axisId, group));
   }, axisStackGroupsInitialValue);
 };
-var getTicksOfScale = function getTicksOfScale2(scale2, opts) {
+var getTicksOfScale = function getTicksOfScale2(scale, opts) {
   var realScaleType = opts.realScaleType, type = opts.type, tickCount = opts.tickCount, originalDomain = opts.originalDomain, allowDecimals = opts.allowDecimals;
   var scaleType = realScaleType || opts.scale;
   if (scaleType !== "auto" && scaleType !== "linear") {
     return null;
   }
   if (tickCount && type === "number" && originalDomain && (originalDomain[0] === "auto" || originalDomain[1] === "auto")) {
-    var domain = scale2.domain();
+    var domain = scale.domain();
     if (!domain.length) {
       return null;
     }
     var tickValues = getNiceTickValues(domain, tickCount, allowDecimals);
-    scale2.domain([min$1(tickValues), max$1(tickValues)]);
+    scale.domain([min$1(tickValues), max$1(tickValues)]);
     return {
       niceTicks: tickValues
     };
   }
   if (tickCount && type === "number") {
-    var _domain = scale2.domain();
+    var _domain = scale.domain();
     var _tickValues = getTickValuesFixedDomain(_domain, tickCount, allowDecimals);
     return {
       niceTicks: _tickValues
@@ -49090,7 +49935,7 @@ var parseDomainOfCategoryAxis = function parseDomainOfCategoryAxis2(specifiedDom
 var getTooltipItem = function getTooltipItem2(graphicalItem, payload) {
   var defaultedProps = graphicalItem.type.defaultProps ? _objectSpread$q(_objectSpread$q({}, graphicalItem.type.defaultProps), graphicalItem.props) : graphicalItem.props;
   var dataKey = defaultedProps.dataKey, name = defaultedProps.name, unit2 = defaultedProps.unit, formatter = defaultedProps.formatter, tooltipType = defaultedProps.tooltipType, chartType = defaultedProps.chartType, hide = defaultedProps.hide;
-  return _objectSpread$q(_objectSpread$q({}, filterProps$1(graphicalItem, false)), {}, {
+  return _objectSpread$q(_objectSpread$q({}, filterProps(graphicalItem, false)), {}, {
     dataKey,
     unit: unit2,
     formatter,
@@ -49406,15 +50251,15 @@ var renderRadialLabel = function renderRadialLabel2(labelProps, label, attrs) {
   var startPoint = polarToCartesian(cx2, cy, radius, labelAngle);
   var endPoint = polarToCartesian(cx2, cy, radius, labelAngle + (direction ? 1 : -1) * 359);
   var path = "M".concat(startPoint.x, ",").concat(startPoint.y, "\n    A").concat(radius, ",").concat(radius, ",0,1,").concat(direction ? 0 : 1, ",\n    ").concat(endPoint.x, ",").concat(endPoint.y);
-  var id2 = isNil$1(labelProps.id) ? uniqueId("recharts-radial-line-") : labelProps.id;
+  var id = isNil$1(labelProps.id) ? uniqueId("recharts-radial-line-") : labelProps.id;
   return /* @__PURE__ */ React$4.createElement("text", _extends$j({}, attrs, {
     dominantBaseline: "central",
     className: clsx("recharts-radial-bar-label", className)
   }), /* @__PURE__ */ React$4.createElement("defs", null, /* @__PURE__ */ React$4.createElement("path", {
-    id: id2,
+    id,
     d: path
   })), /* @__PURE__ */ React$4.createElement("textPath", {
-    xlinkHref: "#".concat(id2)
+    xlinkHref: "#".concat(id)
   }, label));
 };
 var getAttrsOfPolarLabel = function getAttrsOfPolarLabel2(props) {
@@ -49590,7 +50435,7 @@ var getAttrsOfCartesianLabel = function getAttrsOfCartesianLabel2(props) {
       verticalAnchor: verticalEnd
     }, sizeAttrs);
   }
-  if (isObject$a(position) && (isNumber(position.x) || isPercent(position.x)) && (isNumber(position.y) || isPercent(position.y))) {
+  if (isObject$9(position) && (isNumber(position.x) || isPercent(position.x)) && (isNumber(position.y) || isPercent(position.y))) {
     return _objectSpread$o({
       x: x3 + getPercentValue(position.x, width),
       y: y2 + getPercentValue(position.y, height),
@@ -49630,7 +50475,7 @@ function Label(_ref4) {
     label = getLabel(props);
   }
   var isPolarLabel = isPolar(viewBox);
-  var attrs = filterProps$1(props, true);
+  var attrs = filterProps(props, true);
   if (isPolarLabel && (position === "insideStart" || position === "insideEnd" || position === "end")) {
     return renderRadialLabel(props, label, attrs);
   }
@@ -49726,7 +50571,7 @@ var parseLabel = function parseLabel2(label, viewBox) {
       viewBox
     });
   }
-  if (isObject$a(label)) {
+  if (isObject$9(label)) {
     return /* @__PURE__ */ React$4.createElement(Label, _extends$j({
       viewBox
     }, label, {
@@ -49886,7 +50731,7 @@ var defaultAccessor = function defaultAccessor2(entry) {
 };
 function LabelList(_ref) {
   var _ref$valueAccessor = _ref.valueAccessor, valueAccessor = _ref$valueAccessor === void 0 ? defaultAccessor : _ref$valueAccessor, restProps = _objectWithoutProperties$9(_ref, _excluded$9);
-  var data = restProps.data, dataKey = restProps.dataKey, clockWise = restProps.clockWise, id2 = restProps.id, textBreakAll = restProps.textBreakAll, others = _objectWithoutProperties$9(restProps, _excluded2$4);
+  var data = restProps.data, dataKey = restProps.dataKey, clockWise = restProps.clockWise, id = restProps.id, textBreakAll = restProps.textBreakAll, others = _objectWithoutProperties$9(restProps, _excluded2$4);
   if (!data || !data.length) {
     return null;
   }
@@ -49894,10 +50739,10 @@ function LabelList(_ref) {
     className: "recharts-label-list"
   }, data.map(function(entry, index2) {
     var value = isNil$1(dataKey) ? valueAccessor(entry, index2) : getValueByDataKey(entry && entry.payload, dataKey);
-    var idProps = isNil$1(id2) ? {} : {
-      id: "".concat(id2, "-").concat(index2)
+    var idProps = isNil$1(id) ? {} : {
+      id: "".concat(id, "-").concat(index2)
     };
-    return /* @__PURE__ */ React$4.createElement(Label, _extends$i({}, filterProps$1(entry, true), others, idProps, {
+    return /* @__PURE__ */ React$4.createElement(Label, _extends$i({}, filterProps(entry, true), others, idProps, {
       parentViewBox: entry.parentViewBox,
       value,
       textBreakAll,
@@ -49927,7 +50772,7 @@ function parseLabelList(label, data) {
       content: label
     });
   }
-  if (isObject$a(label)) {
+  if (isObject$9(label)) {
     return /* @__PURE__ */ React$4.createElement(LabelList, _extends$i({
       data
     }, label, {
@@ -50169,7 +51014,7 @@ var Sector = function Sector2(sectorProps) {
       endAngle
     });
   }
-  return /* @__PURE__ */ React$4.createElement("path", _extends$h({}, filterProps$1(props, true), {
+  return /* @__PURE__ */ React$4.createElement("path", _extends$h({}, filterProps(props, true), {
     className: layerClass,
     d: path,
     role: "img"
@@ -50265,19 +51110,19 @@ var getX = function getX2(p2) {
 var getY = function getY2(p2) {
   return p2.y;
 };
-var getCurveFactory = function getCurveFactory2(type, layout2) {
+var getCurveFactory = function getCurveFactory2(type, layout) {
   if (isFunction$5(type)) {
     return type;
   }
   var name = "curve".concat(upperFirst$1(type));
-  if ((name === "curveMonotone" || name === "curveBump") && layout2) {
-    return CURVE_FACTORIES["".concat(name).concat(layout2 === "vertical" ? "Y" : "X")];
+  if ((name === "curveMonotone" || name === "curveBump") && layout) {
+    return CURVE_FACTORIES["".concat(name).concat(layout === "vertical" ? "Y" : "X")];
   }
   return CURVE_FACTORIES[name] || curveLinear;
 };
 var getPath$1 = function getPath(_ref) {
-  var _ref$type = _ref.type, type = _ref$type === void 0 ? "linear" : _ref$type, _ref$points = _ref.points, points = _ref$points === void 0 ? [] : _ref$points, baseLine = _ref.baseLine, layout2 = _ref.layout, _ref$connectNulls = _ref.connectNulls, connectNulls = _ref$connectNulls === void 0 ? false : _ref$connectNulls;
-  var curveFactory = getCurveFactory(type, layout2);
+  var _ref$type = _ref.type, type = _ref$type === void 0 ? "linear" : _ref$type, _ref$points = _ref.points, points = _ref$points === void 0 ? [] : _ref$points, baseLine = _ref.baseLine, layout = _ref.layout, _ref$connectNulls = _ref.connectNulls, connectNulls = _ref$connectNulls === void 0 ? false : _ref$connectNulls;
+  var curveFactory = getCurveFactory(type, layout);
   var formatPoints = connectNulls ? points.filter(function(entry) {
     return defined(entry);
   }) : points;
@@ -50291,7 +51136,7 @@ var getPath$1 = function getPath(_ref) {
         base: formatBaseLine[index2]
       });
     });
-    if (layout2 === "vertical") {
+    if (layout === "vertical") {
       lineFunction = shapeArea().y(getY).x1(getX).x0(function(d2) {
         return d2.base.x;
       });
@@ -50303,7 +51148,7 @@ var getPath$1 = function getPath(_ref) {
     lineFunction.defined(defined).curve(curveFactory);
     return lineFunction(areaPoints);
   }
-  if (layout2 === "vertical" && isNumber(baseLine)) {
+  if (layout === "vertical" && isNumber(baseLine)) {
     lineFunction = shapeArea().y(getY).x1(getX).x0(baseLine);
   } else if (isNumber(baseLine)) {
     lineFunction = shapeArea().x(getX).y1(getY).y0(baseLine);
@@ -50319,7 +51164,7 @@ var Curve = function Curve2(props) {
     return null;
   }
   var realPath = points && points.length ? getPath$1(props) : path;
-  return /* @__PURE__ */ reactExports.createElement("path", _extends$g({}, filterProps$1(props, false), adaptEventHandlers(props), {
+  return /* @__PURE__ */ reactExports.createElement("path", _extends$g({}, filterProps(props, false), adaptEventHandlers(props), {
     className: clsx("recharts-curve", className),
     d: realPath,
     ref: pathRef
@@ -50754,10 +51599,10 @@ function createInternalEqualityComparator(compare2) {
     return compare2(a2, b2, state);
   };
 }
-function createIsEqual({ circular, comparator, createState: createState2, equals, strict }) {
-  if (createState2) {
+function createIsEqual({ circular, comparator, createState, equals, strict }) {
+  if (createState) {
     return function isEqual2(a2, b2) {
-      const { cache = circular ? /* @__PURE__ */ new WeakMap() : void 0, meta } = createState2();
+      const { cache = circular ? /* @__PURE__ */ new WeakMap() : void 0, meta } = createState();
       return comparator(a2, b2, {
         cache,
         equals,
@@ -50810,11 +51655,11 @@ createCustomEqual({
   strict: true
 });
 function createCustomEqual(options = {}) {
-  const { circular = false, createInternalComparator: createCustomInternalComparator, createState: createState2, strict = false } = options;
+  const { circular = false, createInternalComparator: createCustomInternalComparator, createState, strict = false } = options;
   const config2 = createEqualityComparatorConfig(options);
   const comparator = createEqualityComparator(config2);
   const equals = createCustomInternalComparator ? createCustomInternalComparator(comparator) : createInternalEqualityComparator(comparator);
-  return createIsEqual({ circular, comparator, createState: createState2, equals, strict });
+  return createIsEqual({ circular, comparator, createState, equals, strict });
 }
 function safeRequestAnimationFrame(callback) {
   if (typeof requestAnimationFrame !== "undefined") requestAnimationFrame(callback);
@@ -50874,7 +51719,7 @@ function createAnimateManager() {
     return null;
   };
   var shouldStop = false;
-  var setStyle2 = function setStyle3(_style) {
+  var setStyle = function setStyle2(_style) {
     if (shouldStop) {
       return;
     }
@@ -50885,11 +51730,11 @@ function createAnimateManager() {
       var styles = _style;
       var _styles = _toArray(styles), curr = _styles[0], restStyles = _styles.slice(1);
       if (typeof curr === "number") {
-        setRafTimeout(setStyle3.bind(null, restStyles), curr);
+        setRafTimeout(setStyle2.bind(null, restStyles), curr);
         return;
       }
-      setStyle3(curr);
-      setRafTimeout(setStyle3.bind(null, restStyles));
+      setStyle2(curr);
+      setRafTimeout(setStyle2.bind(null, restStyles));
       return;
     }
     if (_typeof$p(_style) === "object") {
@@ -50906,7 +51751,7 @@ function createAnimateManager() {
     },
     start: function start(style2) {
       shouldStop = false;
-      setStyle2(style2);
+      setStyle(style2);
     },
     subscribe: function subscribe2(_handleChange) {
       handleChange = _handleChange;
@@ -51059,7 +51904,7 @@ var multyTime = function multyTime2(params, t3) {
     return pre + curr;
   });
 };
-var cubicBezier$1 = function cubicBezier(c1, c2) {
+var cubicBezier = function cubicBezier2(c1, c2) {
   return function(t3) {
     var params = cubicBezierFactor(c1, c2);
     return multyTime(params, t3);
@@ -51126,8 +51971,8 @@ var configBezier = function configBezier2() {
       }
     }
   }
-  var curveX = cubicBezier$1(x1, x22);
-  var curveY = cubicBezier$1(y1, y2);
+  var curveX = cubicBezier(x1, x22);
+  var curveY = cubicBezier(y1, y2);
   var derCurveX = derivativeCubicBezier(x1, x22);
   var rangeValue = function rangeValue2(value) {
     if (value > 1) {
@@ -51302,7 +52147,7 @@ function _iterableToArrayLimit$5(r2, l2) {
 function _arrayWithHoles$5(arr) {
   if (Array.isArray(arr)) return arr;
 }
-var alpha$1 = function alpha(begin, end, k2) {
+var alpha = function alpha2(begin, end, k2) {
   return begin + (end - begin) * k2;
 };
 var needContinue = function needContinue2(_ref) {
@@ -51324,8 +52169,8 @@ var calStepperVals = function calStepperVals2(easing, preVals, steps) {
     return mapObject(function(key, val) {
       if (needContinue(val)) {
         return _objectSpread$j(_objectSpread$j({}, val), {}, {
-          velocity: alpha$1(val.velocity, nextStepVals[key].velocity, steps),
-          from: alpha$1(val.from, nextStepVals[key].from, steps)
+          velocity: alpha(val.velocity, nextStepVals[key].velocity, steps),
+          from: alpha(val.from, nextStepVals[key].from, steps)
         });
       }
       return val;
@@ -51378,14 +52223,14 @@ const configUpdate = function(from, to, easing, duration, render) {
     }
     var t3 = (now2 - beginTime) / duration;
     var currStyle = mapObject(function(key, val) {
-      return alpha$1.apply(void 0, _toConsumableArray$4(val).concat([easing(t3)]));
+      return alpha.apply(void 0, _toConsumableArray$4(val).concat([easing(t3)]));
     }, timingStyle);
     render(_objectSpread$j(_objectSpread$j(_objectSpread$j({}, from), to), currStyle));
     if (t3 < 1) {
       cafId = requestAnimationFrame(update);
     } else {
       var finalStyle = mapObject(function(key, val) {
-        return alpha$1.apply(void 0, _toConsumableArray$4(val).concat([easing(1)]));
+        return alpha.apply(void 0, _toConsumableArray$4(val).concat([easing(1)]));
       }, timingStyle);
       render(_objectSpread$j(_objectSpread$j(_objectSpread$j({}, from), to), finalStyle));
     }
@@ -52004,14 +52849,14 @@ var isInRectangle = function isInRectangle2(point2, rect) {
   if (!point2 || !rect) {
     return false;
   }
-  var px2 = point2.x, py = point2.y;
+  var px = point2.x, py = point2.y;
   var x3 = rect.x, y2 = rect.y, width = rect.width, height = rect.height;
   if (Math.abs(width) > 0 && Math.abs(height) > 0) {
     var minX = Math.min(x3, x3 + width);
     var maxX = Math.max(x3, x3 + width);
     var minY = Math.min(y2, y2 + height);
     var maxY = Math.max(y2, y2 + height);
-    return px2 >= minX && px2 <= maxX && py >= minY && py <= maxY;
+    return px >= minX && px <= maxX && py >= minY && py <= maxY;
   }
   return false;
 };
@@ -52052,7 +52897,7 @@ var Rectangle = function Rectangle2(rectangleProps) {
   }
   var layerClass = clsx("recharts-rectangle", className);
   if (!isUpdateAnimationActive) {
-    return /* @__PURE__ */ React$4.createElement("path", _extends$f({}, filterProps$1(props, true), {
+    return /* @__PURE__ */ React$4.createElement("path", _extends$f({}, filterProps(props, true), {
       className: layerClass,
       d: getRectanglePath(x3, y2, width, height, radius)
     }));
@@ -52085,7 +52930,7 @@ var Rectangle = function Rectangle2(rectangleProps) {
       duration: animationDuration,
       isActive: isAnimationActive,
       easing: animationEasing
-    }, /* @__PURE__ */ React$4.createElement("path", _extends$f({}, filterProps$1(props, true), {
+    }, /* @__PURE__ */ React$4.createElement("path", _extends$f({}, filterProps(props, true), {
       className: layerClass,
       d: getRectanglePath(currX, currY, currWidth, currHeight, radius),
       ref: pathRef
@@ -52110,7 +52955,7 @@ var Dot = function Dot2(props) {
   var cx2 = props.cx, cy = props.cy, r2 = props.r, className = props.className;
   var layerClass = clsx("recharts-dot", className);
   if (cx2 === +cx2 && cy === +cy && r2 === +r2) {
-    return /* @__PURE__ */ reactExports.createElement("circle", _extends$e({}, filterProps$1(props, false), adaptEventHandlers(props), {
+    return /* @__PURE__ */ reactExports.createElement("circle", _extends$e({}, filterProps(props, false), adaptEventHandlers(props), {
       className: layerClass,
       cx: cx2,
       cy,
@@ -52228,7 +53073,7 @@ var Cross = function Cross2(_ref) {
   if (!isNumber(x3) || !isNumber(y2) || !isNumber(width) || !isNumber(height) || !isNumber(top) || !isNumber(left)) {
     return null;
   }
-  return /* @__PURE__ */ React$4.createElement("path", _extends$d({}, filterProps$1(props, true), {
+  return /* @__PURE__ */ React$4.createElement("path", _extends$d({}, filterProps(props, true), {
     className: clsx("recharts-cross", className),
     d: getPath2(x3, y2, width, height, top, left)
   }));
@@ -52412,7 +53257,7 @@ var Trapezoid = function Trapezoid2(props) {
   }
   var layerClass = clsx("recharts-trapezoid", className);
   if (!isUpdateAnimationActive) {
-    return /* @__PURE__ */ React$4.createElement("g", null, /* @__PURE__ */ React$4.createElement("path", _extends$c({}, filterProps$1(trapezoidProps, true), {
+    return /* @__PURE__ */ React$4.createElement("g", null, /* @__PURE__ */ React$4.createElement("path", _extends$c({}, filterProps(trapezoidProps, true), {
       className: layerClass,
       d: getTrapezoidPath(x3, y2, upperWidth, lowerWidth, height)
     })));
@@ -52446,7 +53291,7 @@ var Trapezoid = function Trapezoid2(props) {
       begin: animationBegin,
       duration: animationDuration,
       easing: animationEasing
-    }, /* @__PURE__ */ React$4.createElement("path", _extends$c({}, filterProps$1(trapezoidProps, true), {
+    }, /* @__PURE__ */ React$4.createElement("path", _extends$c({}, filterProps(trapezoidProps, true), {
       className: layerClass,
       d: getTrapezoidPath(currX, currY, currUpperWidth, currLowerWidth, currHeight),
       ref: pathRef
@@ -52917,18 +53762,18 @@ var createScale = function createScale2(_ref) {
     return {};
   }
   var len = data.length;
-  var scale2 = point().domain(range$1(0, len)).range([x3, x3 + width - travellerWidth]);
-  var scaleValues = scale2.domain().map(function(entry) {
-    return scale2(entry);
+  var scale = point().domain(range$1(0, len)).range([x3, x3 + width - travellerWidth]);
+  var scaleValues = scale.domain().map(function(entry) {
+    return scale(entry);
   });
   return {
     isTextActive: false,
     isSlideMoving: false,
     isTravellerMoving: false,
     isTravellerFocused: false,
-    startX: scale2(startIndex),
-    endX: scale2(endIndex),
-    scale: scale2,
+    startX: scale(startIndex),
+    endX: scale(endIndex),
+    scale,
     scaleValues
   };
 };
@@ -53073,12 +53918,12 @@ var Brush = /* @__PURE__ */ function(_PureComponent) {
     }
   }, {
     key: "handleTravellerDragStart",
-    value: function handleTravellerDragStart(id2, e3) {
+    value: function handleTravellerDragStart(id, e3) {
       var event = isTouch(e3) ? e3.changedTouches[0] : e3;
       this.setState({
         isSlideMoving: false,
         isTravellerMoving: true,
-        movingTravellerId: id2,
+        movingTravellerId: id,
         brushMoveStartX: event.pageX
       });
       this.attachDragEndListener();
@@ -53119,10 +53964,10 @@ var Brush = /* @__PURE__ */ function(_PureComponent) {
     }
   }, {
     key: "handleTravellerMoveKeyboard",
-    value: function handleTravellerMoveKeyboard(direction, id2) {
+    value: function handleTravellerMoveKeyboard(direction, id) {
       var _this2 = this;
       var _this$state3 = this.state, scaleValues = _this$state3.scaleValues, startX = _this$state3.startX, endX = _this$state3.endX;
-      var currentScaleValue = this.state[id2];
+      var currentScaleValue = this.state[id];
       var currentIndex = scaleValues.indexOf(currentScaleValue);
       if (currentIndex === -1) {
         return;
@@ -53132,10 +53977,10 @@ var Brush = /* @__PURE__ */ function(_PureComponent) {
         return;
       }
       var newScaleValue = scaleValues[newIndex];
-      if (id2 === "startX" && newScaleValue >= endX || id2 === "endX" && newScaleValue <= startX) {
+      if (id === "startX" && newScaleValue >= endX || id === "endX" && newScaleValue <= startX) {
         return;
       }
-      this.setState(_defineProperty$f({}, id2, newScaleValue), function() {
+      this.setState(_defineProperty$f({}, id, newScaleValue), function() {
         _this2.props.onChange(_this2.getIndex({
           startX: _this2.state.startX,
           endX: _this2.state.endX
@@ -53175,11 +54020,11 @@ var Brush = /* @__PURE__ */ function(_PureComponent) {
     }
   }, {
     key: "renderTravellerLayer",
-    value: function renderTravellerLayer(travellerX, id2) {
+    value: function renderTravellerLayer(travellerX, id) {
       var _data$startIndex, _data$endIndex, _this3 = this;
       var _this$props8 = this.props, y2 = _this$props8.y, travellerWidth = _this$props8.travellerWidth, height = _this$props8.height, traveller = _this$props8.traveller, ariaLabel = _this$props8.ariaLabel, data = _this$props8.data, startIndex = _this$props8.startIndex, endIndex = _this$props8.endIndex;
       var x3 = Math.max(travellerX, this.props.x);
-      var travellerProps = _objectSpread$c(_objectSpread$c({}, filterProps$1(this.props, false)), {}, {
+      var travellerProps = _objectSpread$c(_objectSpread$c({}, filterProps(this.props, false)), {}, {
         x: x3,
         y: y2,
         width: travellerWidth,
@@ -53194,15 +54039,15 @@ var Brush = /* @__PURE__ */ function(_PureComponent) {
         className: "recharts-brush-traveller",
         onMouseEnter: this.handleEnterSlideOrTraveller,
         onMouseLeave: this.handleLeaveSlideOrTraveller,
-        onMouseDown: this.travellerDragStartHandlers[id2],
-        onTouchStart: this.travellerDragStartHandlers[id2],
+        onMouseDown: this.travellerDragStartHandlers[id],
+        onTouchStart: this.travellerDragStartHandlers[id],
         onKeyDown: function onKeyDown(e3) {
           if (!["ArrowLeft", "ArrowRight"].includes(e3.key)) {
             return;
           }
           e3.preventDefault();
           e3.stopPropagation();
-          _this3.handleTravellerMoveKeyboard(e3.key === "ArrowRight" ? 1 : -1, id2);
+          _this3.handleTravellerMoveKeyboard(e3.key === "ArrowRight" ? 1 : -1, id);
         },
         onFocus: function onFocus() {
           _this3.setState({
@@ -53609,11 +54454,11 @@ var minPointSizeCallback = function minPointSizeCallback2(minPointSize) {
   var defaultValue = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : 0;
   return function(value, index2) {
     if (typeof minPointSize === "number") return minPointSize;
-    var isValueNumberOrNil = isNumber(value) || isNullish$1(value);
+    var isValueNumberOrNil = isNumber(value) || isNullish(value);
     if (isValueNumberOrNil) {
       return minPointSize(value, index2);
     }
-    !isValueNumberOrNil ? invariant$1(false) : void 0;
+    !isValueNumberOrNil ? invariant(false) : void 0;
     return defaultValue;
   };
 };
@@ -53817,7 +54662,7 @@ var Bar = /* @__PURE__ */ function(_PureComponent) {
     value: function renderRectanglesStatically(data) {
       var _this2 = this;
       var _this$props = this.props, shape = _this$props.shape, dataKey = _this$props.dataKey, activeIndex = _this$props.activeIndex, activeBar = _this$props.activeBar;
-      var baseProps = filterProps$1(this.props, false);
+      var baseProps = filterProps(this.props, false);
       return data && data.map(function(entry, i2) {
         var isActive = i2 === activeIndex;
         var option = isActive ? activeBar : shape;
@@ -53842,7 +54687,7 @@ var Bar = /* @__PURE__ */ function(_PureComponent) {
     key: "renderRectanglesWithAnimation",
     value: function renderRectanglesWithAnimation() {
       var _this3 = this;
-      var _this$props2 = this.props, data = _this$props2.data, layout2 = _this$props2.layout, isAnimationActive = _this$props2.isAnimationActive, animationBegin = _this$props2.animationBegin, animationDuration = _this$props2.animationDuration, animationEasing = _this$props2.animationEasing, animationId = _this$props2.animationId;
+      var _this$props2 = this.props, data = _this$props2.data, layout = _this$props2.layout, isAnimationActive = _this$props2.isAnimationActive, animationBegin = _this$props2.animationBegin, animationDuration = _this$props2.animationDuration, animationEasing = _this$props2.animationEasing, animationId = _this$props2.animationId;
       var prevData = this.state.prevData;
       return /* @__PURE__ */ React$4.createElement(Animate, {
         begin: animationBegin,
@@ -53874,7 +54719,7 @@ var Bar = /* @__PURE__ */ function(_PureComponent) {
               height: interpolatorHeight(t3)
             });
           }
-          if (layout2 === "horizontal") {
+          if (layout === "horizontal") {
             var _interpolatorHeight = interpolateNumber$2(0, entry.height);
             var h2 = _interpolatorHeight(t3);
             return _objectSpread$a(_objectSpread$a({}, entry), {}, {
@@ -53906,7 +54751,7 @@ var Bar = /* @__PURE__ */ function(_PureComponent) {
     value: function renderBackground() {
       var _this4 = this;
       var _this$props4 = this.props, data = _this$props4.data, dataKey = _this$props4.dataKey, activeIndex = _this$props4.activeIndex;
-      var backgroundProps = filterProps$1(this.props.background, false);
+      var backgroundProps = filterProps(this.props.background, false);
       return data.map(function(entry, i2) {
         entry.value;
         var background = entry.background, rest = _objectWithoutProperties$4(entry, _excluded$4);
@@ -53935,12 +54780,12 @@ var Bar = /* @__PURE__ */ function(_PureComponent) {
       if (this.props.isAnimationActive && !this.state.isAnimationFinished) {
         return null;
       }
-      var _this$props5 = this.props, data = _this$props5.data, xAxis = _this$props5.xAxis, yAxis = _this$props5.yAxis, layout2 = _this$props5.layout, children = _this$props5.children;
+      var _this$props5 = this.props, data = _this$props5.data, xAxis = _this$props5.xAxis, yAxis = _this$props5.yAxis, layout = _this$props5.layout, children = _this$props5.children;
       var errorBarItems = findAllByType(children, ErrorBar);
       if (!errorBarItems) {
         return null;
       }
-      var offset = layout2 === "vertical" ? data[0].height / 2 : data[0].width / 2;
+      var offset = layout === "vertical" ? data[0].height / 2 : data[0].width / 2;
       var dataPointFormatter = function dataPointFormatter2(dataPoint, dataKey) {
         var value = Array.isArray(dataPoint.value) ? dataPoint.value[1] : dataPoint.value;
         return {
@@ -53959,7 +54804,7 @@ var Bar = /* @__PURE__ */ function(_PureComponent) {
           data,
           xAxis,
           yAxis,
-          layout: layout2,
+          layout,
           offset,
           dataPointFormatter
         });
@@ -53968,7 +54813,7 @@ var Bar = /* @__PURE__ */ function(_PureComponent) {
   }, {
     key: "render",
     value: function render() {
-      var _this$props6 = this.props, hide = _this$props6.hide, data = _this$props6.data, className = _this$props6.className, xAxis = _this$props6.xAxis, yAxis = _this$props6.yAxis, left = _this$props6.left, top = _this$props6.top, width = _this$props6.width, height = _this$props6.height, isAnimationActive = _this$props6.isAnimationActive, background = _this$props6.background, id2 = _this$props6.id;
+      var _this$props6 = this.props, hide = _this$props6.hide, data = _this$props6.data, className = _this$props6.className, xAxis = _this$props6.xAxis, yAxis = _this$props6.yAxis, left = _this$props6.left, top = _this$props6.top, width = _this$props6.width, height = _this$props6.height, isAnimationActive = _this$props6.isAnimationActive, background = _this$props6.background, id = _this$props6.id;
       if (hide || !data || !data.length) {
         return null;
       }
@@ -53977,7 +54822,7 @@ var Bar = /* @__PURE__ */ function(_PureComponent) {
       var needClipX = xAxis && xAxis.allowDataOverflow;
       var needClipY = yAxis && yAxis.allowDataOverflow;
       var needClip = needClipX || needClipY;
-      var clipPathId = isNil$1(id2) ? this.id : id2;
+      var clipPathId = isNil$1(id) ? this.id : id;
       return /* @__PURE__ */ React$4.createElement(Layer, {
         className: layerClass
       }, needClipX || needClipY ? /* @__PURE__ */ React$4.createElement("defs", null, /* @__PURE__ */ React$4.createElement("clipPath", {
@@ -54033,11 +54878,11 @@ _defineProperty$d(Bar, "getComposedData", function(_ref2) {
   if (!pos) {
     return null;
   }
-  var layout2 = props.layout;
+  var layout = props.layout;
   var itemDefaultProps = item.type.defaultProps;
   var itemProps = itemDefaultProps !== void 0 ? _objectSpread$a(_objectSpread$a({}, itemDefaultProps), item.props) : item.props;
   var dataKey = itemProps.dataKey, children = itemProps.children, minPointSizeProp = itemProps.minPointSize;
-  var numericAxis = layout2 === "horizontal" ? yAxis : xAxis;
+  var numericAxis = layout === "horizontal" ? yAxis : xAxis;
   var stackedDomain = stackedData ? numericAxis.scale.domain() : null;
   var baseValue = getBaseValueOfBar({
     numericAxis
@@ -54054,7 +54899,7 @@ _defineProperty$d(Bar, "getComposedData", function(_ref2) {
       }
     }
     var minPointSize = minPointSizeCallback(minPointSizeProp, _Bar.defaultProps.minPointSize)(value[1], index2);
-    if (layout2 === "horizontal") {
+    if (layout === "horizontal") {
       var _ref4;
       var _ref3 = [yAxis.scale(value[0]), yAxis.scale(value[1])], baseValueScale = _ref3[0], currentValueScale = _ref3[1];
       x3 = getCateCoordinateOfBar({
@@ -54122,7 +54967,7 @@ _defineProperty$d(Bar, "getComposedData", function(_ref2) {
   });
   return _objectSpread$a({
     data: rects,
-    layout: layout2
+    layout
   }, offset);
 });
 function _typeof$d(o2) {
@@ -54198,7 +55043,7 @@ function _toPrimitive$c(t3, r2) {
   return ("string" === r2 ? String : Number)(t3);
 }
 var formatAxisMap = function formatAxisMap2(props, axisMap, offset, axisType, chartName) {
-  var width = props.width, height = props.height, layout2 = props.layout, children = props.children;
+  var width = props.width, height = props.height, layout = props.layout, children = props.children;
   var ids = Object.keys(axisMap);
   var steps = {
     left: offset.left,
@@ -54211,8 +55056,8 @@ var formatAxisMap = function formatAxisMap2(props, axisMap, offset, axisType, ch
     bottomMirror: height - offset.bottom
   };
   var hasBar = !!findChildByType(children, Bar);
-  return ids.reduce(function(result, id2) {
-    var axis = axisMap[id2];
+  return ids.reduce(function(result, id) {
+    var axis = axisMap[id];
     var orientation = axis.orientation, domain = axis.domain, _axis$padding = axis.padding, padding = _axis$padding === void 0 ? {} : _axis$padding, mirror = axis.mirror, reversed = axis.reversed;
     var offsetKey = "".concat(orientation).concat(mirror ? "Mirror" : "");
     var calculatedPadding, range3, x3, y2, needSpace;
@@ -54241,17 +55086,17 @@ var formatAxisMap = function formatAxisMap2(props, axisMap, offset, axisType, ch
     if (axisType === "xAxis") {
       range3 = [offset.left + (padding.left || 0) + (calculatedPadding || 0), offset.left + offset.width - (padding.right || 0) - (calculatedPadding || 0)];
     } else if (axisType === "yAxis") {
-      range3 = layout2 === "horizontal" ? [offset.top + offset.height - (padding.bottom || 0), offset.top + (padding.top || 0)] : [offset.top + (padding.top || 0) + (calculatedPadding || 0), offset.top + offset.height - (padding.bottom || 0) - (calculatedPadding || 0)];
+      range3 = layout === "horizontal" ? [offset.top + offset.height - (padding.bottom || 0), offset.top + (padding.top || 0)] : [offset.top + (padding.top || 0) + (calculatedPadding || 0), offset.top + offset.height - (padding.bottom || 0) - (calculatedPadding || 0)];
     } else {
       range3 = axis.range;
     }
     if (reversed) {
       range3 = [range3[1], range3[0]];
     }
-    var _parseScale = parseScale(axis, chartName, hasBar), scale2 = _parseScale.scale, realScaleType = _parseScale.realScaleType;
-    scale2.domain(domain).range(range3);
-    checkDomainOfScale(scale2);
-    var ticks2 = getTicksOfScale(scale2, _objectSpread$9(_objectSpread$9({}, axis), {}, {
+    var _parseScale = parseScale(axis, chartName, hasBar), scale = _parseScale.scale, realScaleType = _parseScale.realScaleType;
+    scale.domain(domain).range(range3);
+    checkDomainOfScale(scale);
+    var ticks2 = getTicksOfScale(scale, _objectSpread$9(_objectSpread$9({}, axis), {}, {
       realScaleType
     }));
     if (axisType === "xAxis") {
@@ -54267,7 +55112,7 @@ var formatAxisMap = function formatAxisMap2(props, axisMap, offset, axisType, ch
       realScaleType,
       x: x3,
       y: y2,
-      scale: scale2,
+      scale,
       width: axisType === "xAxis" ? offset.width : axis.width,
       height: axisType === "yAxis" ? offset.height : axis.height
     });
@@ -54277,7 +55122,7 @@ var formatAxisMap = function formatAxisMap2(props, axisMap, offset, axisType, ch
     } else if (!axis.hide) {
       steps[offsetKey] += (needSpace ? -1 : 1) * finalAxis.width;
     }
-    return _objectSpread$9(_objectSpread$9({}, result), {}, _defineProperty$c({}, id2, finalAxis));
+    return _objectSpread$9(_objectSpread$9({}, result), {}, _defineProperty$c({}, id, finalAxis));
   }, {});
 };
 var rectWithPoints = function rectWithPoints2(_ref, _ref2) {
@@ -54301,9 +55146,9 @@ var rectWithCoords = function rectWithCoords2(_ref3) {
   });
 };
 var ScaleHelper = /* @__PURE__ */ function() {
-  function ScaleHelper2(scale2) {
+  function ScaleHelper2(scale) {
     _classCallCheck$9(this, ScaleHelper2);
-    this.scale = scale2;
+    this.scale = scale;
   }
   return _createClass$9(ScaleHelper2, [{
     key: "domain",
@@ -54491,9 +55336,9 @@ var useClipPathId = function useClipPathId2() {
 };
 var useXAxisOrThrow = function useXAxisOrThrow2(xAxisId) {
   var xAxisMap = reactExports.useContext(XAxisContext);
-  !(xAxisMap != null) ? invariant$1(false) : void 0;
+  !(xAxisMap != null) ? invariant(false) : void 0;
   var xAxis = xAxisMap[xAxisId];
-  !(xAxis != null) ? invariant$1(false) : void 0;
+  !(xAxis != null) ? invariant(false) : void 0;
   return xAxis;
 };
 var useArbitraryXAxis = function useArbitraryXAxis2() {
@@ -54509,9 +55354,9 @@ var useYAxisWithFiniteDomainOrRandom = function useYAxisWithFiniteDomainOrRandom
 };
 var useYAxisOrThrow = function useYAxisOrThrow2(yAxisId) {
   var yAxisMap = reactExports.useContext(YAxisContext);
-  !(yAxisMap != null) ? invariant$1(false) : void 0;
+  !(yAxisMap != null) ? invariant(false) : void 0;
   var yAxis = yAxisMap[yAxisId];
-  !(yAxis != null) ? invariant$1(false) : void 0;
+  !(yAxis != null) ? invariant(false) : void 0;
   return yAxis;
 };
 var useViewBox = function useViewBox2() {
@@ -54791,7 +55636,7 @@ function ReferenceLineImpl(props) {
   var clipPath = ifOverflowMatches(props, "hidden") ? "url(#".concat(clipPathId, ")") : void 0;
   var lineProps = _objectSpread$8(_objectSpread$8({
     clipPath
-  }, filterProps$1(props, true)), {}, {
+  }, filterProps(props, true)), {}, {
     x1,
     y1,
     x2: x22,
@@ -55006,7 +55851,7 @@ var ReferenceDot = /* @__PURE__ */ function(_React$Component) {
       var clipPath = ifOverflowMatches(this.props, "hidden") ? "url(#".concat(clipPathId, ")") : void 0;
       var dotProps = _objectSpread$7(_objectSpread$7({
         clipPath
-      }, filterProps$1(this.props, true)), {}, {
+      }, filterProps(this.props, true)), {}, {
         cx: cx2,
         cy
       });
@@ -55237,7 +56082,7 @@ var ReferenceArea = /* @__PURE__ */ function(_React$Component) {
         className: clsx("recharts-reference-area", className)
       }, ReferenceArea2.renderRect(shape, _objectSpread$6(_objectSpread$6({
         clipPath
-      }, filterProps$1(this.props, true)), rect)), Label.renderCallByParent(this.props, rect));
+      }, filterProps(this.props, true)), rect)), Label.renderCallByParent(this.props, rect));
     }
   }]);
 }(React$4.Component);
@@ -55302,11 +56147,11 @@ function getTickBoundaries(viewBox, sign2, sizeKey) {
     end: isWidth ? x3 : y2
   };
 }
-function isVisible(sign2, tickPosition, getSize2, start, end) {
+function isVisible(sign2, tickPosition, getSize, start, end) {
   if (sign2 * tickPosition < sign2 * start || sign2 * tickPosition > sign2 * end) {
     return false;
   }
-  var size = getSize2();
+  var size = getSize();
   return sign2 * (tickPosition - sign2 * size / 2 - start) >= 0 && sign2 * (tickPosition + sign2 * size / 2 - end) <= 0;
 }
 function getNumberIntervalTicks(ticks2, interval) {
@@ -55327,21 +56172,21 @@ function getEquidistantTicks(sign2, boundaries, getTickSize, ticks2, minTickGap)
     }
     var i2 = index2;
     var size;
-    var getSize2 = function getSize3() {
+    var getSize = function getSize2() {
       if (size === void 0) {
         size = getTickSize(entry, i2);
       }
       return size;
     };
     var tickCoord = entry.coordinate;
-    var isShow = index2 === 0 || isVisible(sign2, tickCoord, getSize2, start, end);
+    var isShow = index2 === 0 || isVisible(sign2, tickCoord, getSize, start, end);
     if (!isShow) {
       index2 = 0;
       start = initialStart;
       stepsize += 1;
     }
     if (isShow) {
-      start = tickCoord + sign2 * (getSize2() / 2 + minTickGap);
+      start = tickCoord + sign2 * (getSize() / 2 + minTickGap);
       index2 += stepsize;
     }
   }, _ret;
@@ -55411,14 +56256,14 @@ function getTicksEnd(sign2, boundaries, getTickSize, ticks2, minTickGap) {
   var _loop = function _loop2(i3) {
     var entry = result[i3];
     var size;
-    var getSize2 = function getSize3() {
+    var getSize = function getSize2() {
       if (size === void 0) {
         size = getTickSize(entry, i3);
       }
       return size;
     };
     if (i3 === len - 1) {
-      var gap = sign2 * (entry.coordinate + sign2 * getSize2() / 2 - end);
+      var gap = sign2 * (entry.coordinate + sign2 * getSize() / 2 - end);
       result[i3] = entry = _objectSpread$5(_objectSpread$5({}, entry), {}, {
         tickCoord: gap > 0 ? entry.coordinate - gap * sign2 : entry.coordinate
       });
@@ -55427,9 +56272,9 @@ function getTicksEnd(sign2, boundaries, getTickSize, ticks2, minTickGap) {
         tickCoord: entry.coordinate
       });
     }
-    var isShow = isVisible(sign2, entry.tickCoord, getSize2, start, end);
+    var isShow = isVisible(sign2, entry.tickCoord, getSize, start, end);
     if (isShow) {
-      end = entry.tickCoord - sign2 * (getSize2() / 2 + minTickGap);
+      end = entry.tickCoord - sign2 * (getSize() / 2 + minTickGap);
       result[i3] = _objectSpread$5(_objectSpread$5({}, entry), {}, {
         isShow: true
       });
@@ -55465,14 +56310,14 @@ function getTicksStart(sign2, boundaries, getTickSize, ticks2, minTickGap, prese
   var _loop2 = function _loop22(i3) {
     var entry = result[i3];
     var size;
-    var getSize2 = function getSize3() {
+    var getSize = function getSize2() {
       if (size === void 0) {
         size = getTickSize(entry, i3);
       }
       return size;
     };
     if (i3 === 0) {
-      var gap = sign2 * (entry.coordinate - sign2 * getSize2() / 2 - start);
+      var gap = sign2 * (entry.coordinate - sign2 * getSize() / 2 - start);
       result[i3] = entry = _objectSpread$5(_objectSpread$5({}, entry), {}, {
         tickCoord: gap < 0 ? entry.coordinate - gap * sign2 : entry.coordinate
       });
@@ -55481,9 +56326,9 @@ function getTicksStart(sign2, boundaries, getTickSize, ticks2, minTickGap, prese
         tickCoord: entry.coordinate
       });
     }
-    var isShow = isVisible(sign2, entry.tickCoord, getSize2, start, end);
+    var isShow = isVisible(sign2, entry.tickCoord, getSize, start, end);
     if (isShow) {
-      start = entry.tickCoord + sign2 * (getSize2() / 2 + minTickGap);
+      start = entry.tickCoord + sign2 * (getSize() / 2 + minTickGap);
       result[i3] = _objectSpread$5(_objectSpread$5({}, entry), {}, {
         isShow: true
       });
@@ -55826,7 +56671,7 @@ var CartesianAxis = /* @__PURE__ */ function(_Component) {
     key: "renderAxisLine",
     value: function renderAxisLine() {
       var _this$props5 = this.props, x3 = _this$props5.x, y2 = _this$props5.y, width = _this$props5.width, height = _this$props5.height, orientation = _this$props5.orientation, mirror = _this$props5.mirror, axisLine = _this$props5.axisLine;
-      var props = _objectSpread$4(_objectSpread$4(_objectSpread$4({}, filterProps$1(this.props, false)), filterProps$1(axisLine, false)), {}, {
+      var props = _objectSpread$4(_objectSpread$4(_objectSpread$4({}, filterProps(this.props, false)), filterProps(axisLine, false)), {}, {
         fill: "none"
       });
       if (orientation === "top" || orientation === "bottom") {
@@ -55868,11 +56713,11 @@ var CartesianAxis = /* @__PURE__ */ function(_Component) {
         }), fontSize, letterSpacing);
         var textAnchor = this.getTickTextAnchor();
         var verticalAnchor = this.getTickVerticalAnchor();
-        var axisProps = filterProps$1(this.props, false);
-        var customTickProps = filterProps$1(tick, false);
+        var axisProps = filterProps(this.props, false);
+        var customTickProps = filterProps(tick, false);
         var tickLineProps = _objectSpread$4(_objectSpread$4({}, axisProps), {}, {
           fill: "none"
-        }, filterProps$1(tickLine, false));
+        }, filterProps(tickLine, false));
         var items = finalTicks.map(function(entry, i2) {
           var _this2$getTickLineCoo = _this2.getTickLineCoord(entry), lineCoord = _this2$getTickLineCoo.line, tickCoord = _this2$getTickLineCoo.tick;
           var tickProps = _objectSpread$4(_objectSpread$4(_objectSpread$4(_objectSpread$4({
@@ -56090,7 +56935,7 @@ function renderLineItem(option, props) {
     lineItem = option(props);
   } else {
     var x1 = props.x1, y1 = props.y1, x22 = props.x2, y2 = props.y2, key = props.key, others = _objectWithoutProperties$2(props, _excluded$2);
-    var _filterProps = filterProps$1(others, false);
+    var _filterProps = filterProps(others, false);
     _filterProps.offset;
     var restOfFilteredProps = _objectWithoutProperties$2(_filterProps, _excluded2$2);
     lineItem = /* @__PURE__ */ React$4.createElement("line", _extends$4({}, restOfFilteredProps, {
@@ -56618,7 +57463,7 @@ var Line = /* @__PURE__ */ function(_PureComponent) {
       if (this.props.isAnimationActive && !this.state.isAnimationFinished) {
         return null;
       }
-      var _this$props = this.props, points = _this$props.points, xAxis = _this$props.xAxis, yAxis = _this$props.yAxis, layout2 = _this$props.layout, children = _this$props.children;
+      var _this$props = this.props, points = _this$props.points, xAxis = _this$props.xAxis, yAxis = _this$props.yAxis, layout = _this$props.layout, children = _this$props.children;
       var errorBarItems = findAllByType(children, ErrorBar);
       if (!errorBarItems) {
         return null;
@@ -56640,7 +57485,7 @@ var Line = /* @__PURE__ */ function(_PureComponent) {
           data: points,
           xAxis,
           yAxis,
-          layout: layout2,
+          layout,
           dataPointFormatter
         });
       }));
@@ -56653,8 +57498,8 @@ var Line = /* @__PURE__ */ function(_PureComponent) {
         return null;
       }
       var _this$props2 = this.props, dot = _this$props2.dot, points = _this$props2.points, dataKey = _this$props2.dataKey;
-      var lineProps = filterProps$1(this.props, false);
-      var customDotProps = filterProps$1(dot, true);
+      var lineProps = filterProps(this.props, false);
+      var customDotProps = filterProps(dot, true);
       var dots = points.map(function(entry, i2) {
         var dotProps = _objectSpread$2(_objectSpread$2(_objectSpread$2({
           key: "dot-".concat(i2),
@@ -56681,17 +57526,17 @@ var Line = /* @__PURE__ */ function(_PureComponent) {
   }, {
     key: "renderCurveStatically",
     value: function renderCurveStatically(points, needClip, clipPathId, props) {
-      var _this$props3 = this.props, type = _this$props3.type, layout2 = _this$props3.layout, connectNulls = _this$props3.connectNulls;
+      var _this$props3 = this.props, type = _this$props3.type, layout = _this$props3.layout, connectNulls = _this$props3.connectNulls;
       _this$props3.ref;
       var others = _objectWithoutProperties$1(_this$props3, _excluded$1);
-      var curveProps = _objectSpread$2(_objectSpread$2(_objectSpread$2({}, filterProps$1(others, true)), {}, {
+      var curveProps = _objectSpread$2(_objectSpread$2(_objectSpread$2({}, filterProps(others, true)), {}, {
         fill: "none",
         className: "recharts-line-curve",
         clipPath: needClip ? "url(#clipPath-".concat(clipPathId, ")") : null,
         points
       }, props), {}, {
         type,
-        layout: layout2,
+        layout,
         connectNulls
       });
       return /* @__PURE__ */ React$4.createElement(Curve, _extends$3({}, curveProps, {
@@ -56778,7 +57623,7 @@ var Line = /* @__PURE__ */ function(_PureComponent) {
     key: "render",
     value: function render() {
       var _filterProps;
-      var _this$props6 = this.props, hide = _this$props6.hide, dot = _this$props6.dot, points = _this$props6.points, className = _this$props6.className, xAxis = _this$props6.xAxis, yAxis = _this$props6.yAxis, top = _this$props6.top, left = _this$props6.left, width = _this$props6.width, height = _this$props6.height, isAnimationActive = _this$props6.isAnimationActive, id2 = _this$props6.id;
+      var _this$props6 = this.props, hide = _this$props6.hide, dot = _this$props6.dot, points = _this$props6.points, className = _this$props6.className, xAxis = _this$props6.xAxis, yAxis = _this$props6.yAxis, top = _this$props6.top, left = _this$props6.left, width = _this$props6.width, height = _this$props6.height, isAnimationActive = _this$props6.isAnimationActive, id = _this$props6.id;
       if (hide || !points || !points.length) {
         return null;
       }
@@ -56788,8 +57633,8 @@ var Line = /* @__PURE__ */ function(_PureComponent) {
       var needClipX = xAxis && xAxis.allowDataOverflow;
       var needClipY = yAxis && yAxis.allowDataOverflow;
       var needClip = needClipX || needClipY;
-      var clipPathId = isNil$1(id2) ? this.id : id2;
-      var _ref2 = (_filterProps = filterProps$1(dot, false)) !== null && _filterProps !== void 0 ? _filterProps : {
+      var clipPathId = isNil$1(id) ? this.id : id;
+      var _ref2 = (_filterProps = filterProps(dot, false)) !== null && _filterProps !== void 0 ? _filterProps : {
         r: 3,
         strokeWidth: 2
       }, _ref2$r = _ref2.r, r2 = _ref2$r === void 0 ? 3 : _ref2$r, _ref2$strokeWidth = _ref2.strokeWidth, strokeWidth = _ref2$strokeWidth === void 0 ? 2 : _ref2$strokeWidth;
@@ -56883,10 +57728,10 @@ _defineProperty$5(Line, "defaultProps", {
 });
 _defineProperty$5(Line, "getComposedData", function(_ref4) {
   var props = _ref4.props, xAxis = _ref4.xAxis, yAxis = _ref4.yAxis, xAxisTicks = _ref4.xAxisTicks, yAxisTicks = _ref4.yAxisTicks, dataKey = _ref4.dataKey, bandSize = _ref4.bandSize, displayedData = _ref4.displayedData, offset = _ref4.offset;
-  var layout2 = props.layout;
+  var layout = props.layout;
   var points = displayedData.map(function(entry, index2) {
     var value = getValueByDataKey(entry, dataKey);
-    if (layout2 === "horizontal") {
+    if (layout === "horizontal") {
       return {
         x: getCateCoordinateOfLine({
           axis: xAxis,
@@ -56915,7 +57760,7 @@ _defineProperty$5(Line, "getComposedData", function(_ref4) {
   });
   return _objectSpread$2({
     points,
-    layout: layout2
+    layout
   }, offset);
 });
 function _typeof$5(o2) {
@@ -57542,10 +58387,10 @@ var AccessibilityManager = /* @__PURE__ */ function() {
     key: "setDetails",
     value: function setDetails(_ref) {
       var _ref2;
-      var _ref$coordinateList = _ref.coordinateList, coordinateList = _ref$coordinateList === void 0 ? null : _ref$coordinateList, _ref$container = _ref.container, container = _ref$container === void 0 ? null : _ref$container, _ref$layout = _ref.layout, layout2 = _ref$layout === void 0 ? null : _ref$layout, _ref$offset = _ref.offset, offset = _ref$offset === void 0 ? null : _ref$offset, _ref$mouseHandlerCall = _ref.mouseHandlerCallback, mouseHandlerCallback = _ref$mouseHandlerCall === void 0 ? null : _ref$mouseHandlerCall;
+      var _ref$coordinateList = _ref.coordinateList, coordinateList = _ref$coordinateList === void 0 ? null : _ref$coordinateList, _ref$container = _ref.container, container = _ref$container === void 0 ? null : _ref$container, _ref$layout = _ref.layout, layout = _ref$layout === void 0 ? null : _ref$layout, _ref$offset = _ref.offset, offset = _ref$offset === void 0 ? null : _ref$offset, _ref$mouseHandlerCall = _ref.mouseHandlerCallback, mouseHandlerCallback = _ref$mouseHandlerCall === void 0 ? null : _ref$mouseHandlerCall;
       this.coordinateList = (_ref2 = coordinateList !== null && coordinateList !== void 0 ? coordinateList : this.coordinateList) !== null && _ref2 !== void 0 ? _ref2 : [];
       this.container = container !== null && container !== void 0 ? container : this.container;
-      this.layout = layout2 !== null && layout2 !== void 0 ? layout2 : this.layout;
+      this.layout = layout !== null && layout !== void 0 ? layout : this.layout;
       this.offset = offset !== null && offset !== void 0 ? offset : this.offset;
       this.mouseHandlerCallback = mouseHandlerCallback !== null && mouseHandlerCallback !== void 0 ? mouseHandlerCallback : this.mouseHandlerCallback;
       this.activeIndex = Math.min(Math.max(this.activeIndex, 0), this.coordinateList.length - 1);
@@ -57618,15 +58463,15 @@ function isDomainSpecifiedByUser(domain, allowDataOverflow, axisType) {
   }
   return false;
 }
-function getCursorRectangle(layout2, activeCoordinate, offset, tooltipAxisBandSize) {
+function getCursorRectangle(layout, activeCoordinate, offset, tooltipAxisBandSize) {
   var halfSize = tooltipAxisBandSize / 2;
   return {
     stroke: "none",
     fill: "#ccc",
-    x: layout2 === "horizontal" ? activeCoordinate.x - halfSize : offset.left + 0.5,
-    y: layout2 === "horizontal" ? offset.top + 0.5 : activeCoordinate.y - halfSize,
-    width: layout2 === "horizontal" ? tooltipAxisBandSize : offset.width - 1,
-    height: layout2 === "horizontal" ? offset.height - 1 : tooltipAxisBandSize
+    x: layout === "horizontal" ? activeCoordinate.x - halfSize : offset.left + 0.5,
+    y: layout === "horizontal" ? offset.top + 0.5 : activeCoordinate.y - halfSize,
+    width: layout === "horizontal" ? tooltipAxisBandSize : offset.width - 1,
+    height: layout === "horizontal" ? offset.height - 1 : tooltipAxisBandSize
   };
 }
 function getRadialCursorPoints(activeCoordinate) {
@@ -57642,20 +58487,20 @@ function getRadialCursorPoints(activeCoordinate) {
     endAngle
   };
 }
-function getCursorPoints(layout2, activeCoordinate, offset) {
+function getCursorPoints(layout, activeCoordinate, offset) {
   var x1, y1, x22, y2;
-  if (layout2 === "horizontal") {
+  if (layout === "horizontal") {
     x1 = activeCoordinate.x;
     x22 = x1;
     y1 = offset.top;
     y2 = offset.top + offset.height;
-  } else if (layout2 === "vertical") {
+  } else if (layout === "vertical") {
     y1 = activeCoordinate.y;
     y2 = y1;
     x1 = offset.left;
     x22 = offset.left + offset.width;
   } else if (activeCoordinate.cx != null && activeCoordinate.cy != null) {
-    if (layout2 === "centric") {
+    if (layout === "centric") {
       var cx2 = activeCoordinate.cx, cy = activeCoordinate.cy, innerRadius = activeCoordinate.innerRadius, outerRadius = activeCoordinate.outerRadius, angle = activeCoordinate.angle;
       var innerPoint = polarToCartesian(cx2, cy, innerRadius, angle);
       var outerPoint = polarToCartesian(cx2, cy, outerRadius, angle);
@@ -57729,7 +58574,7 @@ function _toPrimitive$1(t3, r2) {
 }
 function Cursor(props) {
   var _element$props$cursor, _defaultProps;
-  var element = props.element, tooltipEventType = props.tooltipEventType, isActive = props.isActive, activeCoordinate = props.activeCoordinate, activePayload = props.activePayload, offset = props.offset, activeTooltipIndex = props.activeTooltipIndex, tooltipAxisBandSize = props.tooltipAxisBandSize, layout2 = props.layout, chartName = props.chartName;
+  var element = props.element, tooltipEventType = props.tooltipEventType, isActive = props.isActive, activeCoordinate = props.activeCoordinate, activePayload = props.activePayload, offset = props.offset, activeTooltipIndex = props.activeTooltipIndex, tooltipAxisBandSize = props.tooltipAxisBandSize, layout = props.layout, chartName = props.chartName;
   var elementPropsCursor = (_element$props$cursor = element.props.cursor) !== null && _element$props$cursor !== void 0 ? _element$props$cursor : (_defaultProps = element.type.defaultProps) === null || _defaultProps === void 0 ? void 0 : _defaultProps.cursor;
   if (!element || !elementPropsCursor || !isActive || !activeCoordinate || chartName !== "ScatterChart" && tooltipEventType !== "axis") {
     return null;
@@ -57740,9 +58585,9 @@ function Cursor(props) {
     restProps = activeCoordinate;
     cursorComp = Cross;
   } else if (chartName === "BarChart") {
-    restProps = getCursorRectangle(layout2, activeCoordinate, offset, tooltipAxisBandSize);
+    restProps = getCursorRectangle(layout, activeCoordinate, offset, tooltipAxisBandSize);
     cursorComp = Rectangle;
-  } else if (layout2 === "radial") {
+  } else if (layout === "radial") {
     var _getRadialCursorPoint = getRadialCursorPoints(activeCoordinate), cx2 = _getRadialCursorPoint.cx, cy = _getRadialCursorPoint.cy, radius = _getRadialCursorPoint.radius, startAngle = _getRadialCursorPoint.startAngle, endAngle = _getRadialCursorPoint.endAngle;
     restProps = {
       cx: cx2,
@@ -57755,14 +58600,14 @@ function Cursor(props) {
     cursorComp = Sector;
   } else {
     restProps = {
-      points: getCursorPoints(layout2, activeCoordinate, offset)
+      points: getCursorPoints(layout, activeCoordinate, offset)
     };
     cursorComp = Curve;
   }
   var cursorProps = _objectSpread$1(_objectSpread$1(_objectSpread$1(_objectSpread$1({
     stroke: "#ccc",
     pointerEvents: "none"
-  }, offset), restProps), filterProps$1(elementPropsCursor, false)), {}, {
+  }, offset), restProps), filterProps(elementPropsCursor, false)), {}, {
     payload: activePayload,
     payloadIndex: activeTooltipIndex,
     className: clsx("recharts-tooltip-cursor", elementPropsCursor.className)
@@ -57997,36 +58842,36 @@ var originCoordinate = {
 function renderAsIs(element) {
   return element;
 }
-var calculateTooltipPos = function calculateTooltipPos2(rangeObj, layout2) {
-  if (layout2 === "horizontal") {
+var calculateTooltipPos = function calculateTooltipPos2(rangeObj, layout) {
+  if (layout === "horizontal") {
     return rangeObj.x;
   }
-  if (layout2 === "vertical") {
+  if (layout === "vertical") {
     return rangeObj.y;
   }
-  if (layout2 === "centric") {
+  if (layout === "centric") {
     return rangeObj.angle;
   }
   return rangeObj.radius;
 };
-var getActiveCoordinate = function getActiveCoordinate2(layout2, tooltipTicks, activeIndex, rangeObj) {
+var getActiveCoordinate = function getActiveCoordinate2(layout, tooltipTicks, activeIndex, rangeObj) {
   var entry = tooltipTicks.find(function(tick) {
     return tick && tick.index === activeIndex;
   });
   if (entry) {
-    if (layout2 === "horizontal") {
+    if (layout === "horizontal") {
       return {
         x: entry.coordinate,
         y: rangeObj.y
       };
     }
-    if (layout2 === "vertical") {
+    if (layout === "vertical") {
       return {
         x: rangeObj.x,
         y: entry.coordinate
       };
     }
-    if (layout2 === "centric") {
+    if (layout === "centric") {
       var _angle = entry.coordinate;
       var _radius = rangeObj.radius;
       return _objectSpread(_objectSpread(_objectSpread({}, rangeObj), polarToCartesian(rangeObj.cx, rangeObj.cy, _radius, _angle)), {}, {
@@ -58090,18 +58935,18 @@ var getTooltipContent = function getTooltipContent2(state, chartData, activeInde
     return [].concat(_toConsumableArray(result), [getTooltipItem(child, payload)]);
   }, []);
 };
-var getTooltipData = function getTooltipData2(state, chartData, layout2, rangeObj) {
+var getTooltipData = function getTooltipData2(state, chartData, layout, rangeObj) {
   var rangeData = rangeObj || {
     x: state.chartX,
     y: state.chartY
   };
-  var pos = calculateTooltipPos(rangeData, layout2);
+  var pos = calculateTooltipPos(rangeData, layout);
   var ticks2 = state.orderedTooltipTicks, axis = state.tooltipAxis, tooltipTicks = state.tooltipTicks;
   var activeIndex = calculateActiveTickIndex(pos, ticks2, tooltipTicks, axis);
   if (activeIndex >= 0 && tooltipTicks) {
     var activeLabel = tooltipTicks[activeIndex] && tooltipTicks[activeIndex].value;
     var activePayload = getTooltipContent(state, chartData, activeIndex, activeLabel);
-    var activeCoordinate = getActiveCoordinate(layout2, ticks2, activeIndex, rangeData);
+    var activeCoordinate = getActiveCoordinate(layout, ticks2, activeIndex, rangeData);
     return {
       activeTooltipIndex: activeIndex,
       activeLabel,
@@ -58113,12 +58958,12 @@ var getTooltipData = function getTooltipData2(state, chartData, layout2, rangeOb
 };
 var getAxisMapByAxes = function getAxisMapByAxes2(props, _ref2) {
   var axes = _ref2.axes, graphicalItems = _ref2.graphicalItems, axisType = _ref2.axisType, axisIdKey = _ref2.axisIdKey, stackGroups = _ref2.stackGroups, dataStartIndex = _ref2.dataStartIndex, dataEndIndex = _ref2.dataEndIndex;
-  var layout2 = props.layout, children = props.children, stackOffset = props.stackOffset;
-  var isCategorical = isCategoricalAxis(layout2, axisType);
+  var layout = props.layout, children = props.children, stackOffset = props.stackOffset;
+  var isCategorical = isCategoricalAxis(layout, axisType);
   return axes.reduce(function(result, child) {
     var _childProps$domain2;
     var childProps = child.type.defaultProps !== void 0 ? _objectSpread(_objectSpread({}, child.type.defaultProps), child.props) : child.props;
-    var type = childProps.type, dataKey = childProps.dataKey, allowDataOverflow = childProps.allowDataOverflow, allowDuplicatedCategory = childProps.allowDuplicatedCategory, scale2 = childProps.scale, ticks2 = childProps.ticks, includeHidden = childProps.includeHidden;
+    var type = childProps.type, dataKey = childProps.dataKey, allowDataOverflow = childProps.allowDataOverflow, allowDuplicatedCategory = childProps.allowDuplicatedCategory, scale = childProps.scale, ticks2 = childProps.ticks, includeHidden = childProps.includeHidden;
     var axisId = childProps[axisIdKey];
     if (result[axisId]) {
       return result;
@@ -58136,7 +58981,7 @@ var getAxisMapByAxes = function getAxisMapByAxes2(props, _ref2) {
     var domain, duplicateDomain, categoricalDomain;
     if (isDomainSpecifiedByUser(childProps.domain, allowDataOverflow, type)) {
       domain = parseSpecifiedDomain(childProps.domain, null, allowDataOverflow);
-      if (isCategorical && (type === "number" || scale2 !== "auto")) {
+      if (isCategorical && (type === "number" || scale !== "auto")) {
         categoricalDomain = getDomainOfDataByKey(displayedData, dataKey, "category");
       }
     }
@@ -58172,12 +59017,12 @@ var getAxisMapByAxes = function getAxisMapByAxes2(props, _ref2) {
             var itemAxisId = axisIdKey in item.props ? item.props[axisIdKey] : (_defaultProps2 = item.type.defaultProps) === null || _defaultProps2 === void 0 ? void 0 : _defaultProps2[axisIdKey];
             var itemHide = "hide" in item.props ? item.props.hide : (_defaultProps3 = item.type.defaultProps) === null || _defaultProps3 === void 0 ? void 0 : _defaultProps3.hide;
             return itemAxisId === axisId && (includeHidden || !itemHide);
-          }), dataKey, axisType, layout2);
+          }), dataKey, axisType, layout);
           if (errorBarsDomain) {
             domain = errorBarsDomain;
           }
         }
-        if (isCategorical && (type === "number" || scale2 !== "auto")) {
+        if (isCategorical && (type === "number" || scale !== "auto")) {
           categoricalDomain = getDomainOfDataByKey(displayedData, dataKey, "category");
         }
       } else if (isCategorical) {
@@ -58189,7 +59034,7 @@ var getAxisMapByAxes = function getAxisMapByAxes2(props, _ref2) {
           var itemAxisId = axisIdKey in item.props ? item.props[axisIdKey] : item.type.defaultProps[axisIdKey];
           var itemHide = "hide" in item.props ? item.props.hide : item.type.defaultProps.hide;
           return itemAxisId === axisId && (includeHidden || !itemHide);
-        }), type, layout2, true);
+        }), type, layout, true);
       }
       if (type === "number") {
         domain = detectReferenceElementsDomain(children, domain, axisId, axisType, ticks2);
@@ -58213,20 +59058,20 @@ var getAxisMapByAxes = function getAxisMapByAxes2(props, _ref2) {
       duplicateDomain,
       originalDomain: (_childProps$domain2 = childProps.domain) !== null && _childProps$domain2 !== void 0 ? _childProps$domain2 : defaultDomain,
       isCategorical,
-      layout: layout2
+      layout
     })));
   }, {});
 };
 var getAxisMapByItems = function getAxisMapByItems2(props, _ref3) {
   var graphicalItems = _ref3.graphicalItems, Axis = _ref3.Axis, axisType = _ref3.axisType, axisIdKey = _ref3.axisIdKey, stackGroups = _ref3.stackGroups, dataStartIndex = _ref3.dataStartIndex, dataEndIndex = _ref3.dataEndIndex;
-  var layout2 = props.layout, children = props.children;
+  var layout = props.layout, children = props.children;
   var displayedData = getDisplayedData(props.data, {
     graphicalItems,
     dataStartIndex,
     dataEndIndex
   });
   var len = displayedData.length;
-  var isCategorical = isCategoricalAxis(layout2, axisType);
+  var isCategorical = isCategoricalAxis(layout, axisType);
   var index2 = -1;
   return graphicalItems.reduce(function(result, child) {
     var childProps = child.type.defaultProps !== void 0 ? _objectSpread(_objectSpread({}, child.type.defaultProps), child.props) : child.props;
@@ -58246,7 +59091,7 @@ var getAxisMapByItems = function getAxisMapByItems2(props, _ref3) {
           var itemAxisId = axisIdKey in item.props ? item.props[axisIdKey] : (_defaultProps4 = item.type.defaultProps) === null || _defaultProps4 === void 0 ? void 0 : _defaultProps4[axisIdKey];
           var itemHide = "hide" in item.props ? item.props.hide : (_defaultProps5 = item.type.defaultProps) === null || _defaultProps5 === void 0 ? void 0 : _defaultProps5.hide;
           return itemAxisId === axisId && !itemHide;
-        }), "number", layout2), Axis.defaultProps.allowDataOverflow);
+        }), "number", layout), Axis.defaultProps.allowDataOverflow);
         domain = detectReferenceElementsDomain(children, domain, axisId, axisType);
       }
       return _objectSpread(_objectSpread({}, result), {}, _defineProperty({}, axisId, _objectSpread(_objectSpread({
@@ -58257,7 +59102,7 @@ var getAxisMapByItems = function getAxisMapByItems2(props, _ref3) {
         domain,
         originalDomain,
         isCategorical,
-        layout: layout2
+        layout
         // specify scale when no Axis
         // scale: isCategorical ? 'band' : 'linear',
       })));
@@ -58340,20 +59185,20 @@ var hasGraphicalBarItem = function hasGraphicalBarItem2(graphicalItems) {
     return name && name.indexOf("Bar") >= 0;
   });
 };
-var getAxisNameByLayout = function getAxisNameByLayout2(layout2) {
-  if (layout2 === "horizontal") {
+var getAxisNameByLayout = function getAxisNameByLayout2(layout) {
+  if (layout === "horizontal") {
     return {
       numericAxisName: "yAxis",
       cateAxisName: "xAxis"
     };
   }
-  if (layout2 === "vertical") {
+  if (layout === "vertical") {
     return {
       numericAxisName: "xAxis",
       cateAxisName: "yAxis"
     };
   }
-  if (layout2 === "centric") {
+  if (layout === "centric") {
     return {
       numericAxisName: "radiusAxis",
       cateAxisName: "angleAxis"
@@ -58370,8 +59215,8 @@ var calculateOffset = function calculateOffset2(_ref5, prevLegendBBox) {
   var margin = props.margin || {};
   var brushItem = findChildByType(children, Brush);
   var legendItem = findChildByType(children, Legend);
-  var offsetH = Object.keys(yAxisMap).reduce(function(result, id2) {
-    var entry = yAxisMap[id2];
+  var offsetH = Object.keys(yAxisMap).reduce(function(result, id) {
+    var entry = yAxisMap[id];
     var orientation = entry.orientation;
     if (!entry.mirror && !entry.hide) {
       return _objectSpread(_objectSpread({}, result), {}, _defineProperty({}, orientation, result[orientation] + entry.width));
@@ -58381,8 +59226,8 @@ var calculateOffset = function calculateOffset2(_ref5, prevLegendBBox) {
     left: margin.left || 0,
     right: margin.right || 0
   });
-  var offsetV = Object.keys(xAxisMap).reduce(function(result, id2) {
-    var entry = xAxisMap[id2];
+  var offsetV = Object.keys(xAxisMap).reduce(function(result, id) {
+    var entry = xAxisMap[id];
     var orientation = entry.orientation;
     if (!entry.mirror && !entry.hide) {
       return _objectSpread(_objectSpread({}, result), {}, _defineProperty({}, orientation, get$3(result, "".concat(orientation)) + entry.height));
@@ -58423,8 +59268,8 @@ var generateCategoricalChart = function generateCategoricalChart2(_ref6) {
   var chartName = _ref6.chartName, GraphicalChild = _ref6.GraphicalChild, _ref6$defaultTooltipE = _ref6.defaultTooltipEventType, defaultTooltipEventType = _ref6$defaultTooltipE === void 0 ? "axis" : _ref6$defaultTooltipE, _ref6$validateTooltip = _ref6.validateTooltipEventTypes, validateTooltipEventTypes = _ref6$validateTooltip === void 0 ? ["axis"] : _ref6$validateTooltip, axisComponents = _ref6.axisComponents, legendContent = _ref6.legendContent, formatAxisMap3 = _ref6.formatAxisMap, defaultProps2 = _ref6.defaultProps;
   var getFormatItems = function getFormatItems2(props, currentState) {
     var graphicalItems = currentState.graphicalItems, stackGroups = currentState.stackGroups, offset = currentState.offset, updateId2 = currentState.updateId, dataStartIndex = currentState.dataStartIndex, dataEndIndex = currentState.dataEndIndex;
-    var barSize = props.barSize, layout2 = props.layout, barGap = props.barGap, barCategoryGap = props.barCategoryGap, globalMaxBarSize = props.maxBarSize;
-    var _getAxisNameByLayout = getAxisNameByLayout(layout2), numericAxisName = _getAxisNameByLayout.numericAxisName, cateAxisName = _getAxisNameByLayout.cateAxisName;
+    var barSize = props.barSize, layout = props.layout, barGap = props.barGap, barCategoryGap = props.barCategoryGap, globalMaxBarSize = props.maxBarSize;
+    var _getAxisNameByLayout = getAxisNameByLayout(layout), numericAxisName = _getAxisNameByLayout.numericAxisName, cateAxisName = _getAxisNameByLayout.cateAxisName;
     var hasBar = hasGraphicalBarItem(graphicalItems);
     var formattedItems = [];
     graphicalItems.forEach(function(item, index2) {
@@ -58440,9 +59285,9 @@ var generateCategoricalChart = function generateCategoricalChart2(_ref6) {
       var axisObjInitialValue = {};
       var axisObj = axisComponents.reduce(function(result, entry) {
         var axisMap = currentState["".concat(entry.axisType, "Map")];
-        var id2 = itemProps["".concat(entry.axisType, "Id")];
-        !(axisMap && axisMap[id2] || entry.axisType === "zAxis") ? invariant$1(false) : void 0;
-        var axis = axisMap[id2];
+        var id = itemProps["".concat(entry.axisType, "Id")];
+        !(axisMap && axisMap[id] || entry.axisType === "zAxis") ? invariant(false) : void 0;
+        var axis = axisMap[id];
         return _objectSpread(_objectSpread({}, result), {}, _defineProperty(_defineProperty({}, entry.axisType, axis), "".concat(entry.axisType, "Ticks"), getTicksOfAxis(axis)));
       }, axisObjInitialValue);
       var cateAxis = axisObj[cateAxisName];
@@ -58489,7 +59334,7 @@ var generateCategoricalChart = function generateCategoricalChart2(_ref6) {
             barPosition,
             offset,
             stackedData,
-            layout: layout2,
+            layout,
             dataStartIndex,
             dataEndIndex
           }))), {}, _defineProperty(_defineProperty(_defineProperty({
@@ -58509,8 +59354,8 @@ var generateCategoricalChart = function generateCategoricalChart2(_ref6) {
     })) {
       return null;
     }
-    var children = props.children, layout2 = props.layout, stackOffset = props.stackOffset, data = props.data, reverseStackOrder = props.reverseStackOrder;
-    var _getAxisNameByLayout2 = getAxisNameByLayout(layout2), numericAxisName = _getAxisNameByLayout2.numericAxisName, cateAxisName = _getAxisNameByLayout2.cateAxisName;
+    var children = props.children, layout = props.layout, stackOffset = props.stackOffset, data = props.data, reverseStackOrder = props.reverseStackOrder;
+    var _getAxisNameByLayout2 = getAxisNameByLayout(layout), numericAxisName = _getAxisNameByLayout2.numericAxisName, cateAxisName = _getAxisNameByLayout2.cateAxisName;
     var graphicalItems = findAllByType(children, GraphicalChild);
     var stackGroups = getStackGroupsByAxisId(data, graphicalItems, "".concat(numericAxisName, "Id"), "".concat(cateAxisName, "Id"), stackOffset, reverseStackOrder);
     var axisObj = axisComponents.reduce(function(result, entry) {
@@ -58739,7 +59584,7 @@ var generateCategoricalChart = function generateCategoricalChart2(_ref6) {
         }
       });
       _defineProperty(_this, "applySyncEvent", function(data) {
-        var _this$props = _this.props, layout2 = _this$props.layout, syncMethod = _this$props.syncMethod;
+        var _this$props = _this.props, layout = _this$props.layout, syncMethod = _this$props.syncMethod;
         var updateId2 = _this.state.updateId;
         var dataStartIndex = data.dataStartIndex, dataEndIndex = data.dataEndIndex;
         if (data.dataStartIndex !== void 0 || data.dataEndIndex !== void 0) {
@@ -58779,8 +59624,8 @@ var generateCategoricalChart = function generateCategoricalChart2(_ref6) {
           var activeLabel = tooltipTicks[activeTooltipIndex] && tooltipTicks[activeTooltipIndex].value;
           var activePayload = getTooltipContent(_this.state, _this.props.data, activeTooltipIndex);
           var activeCoordinate = tooltipTicks[activeTooltipIndex] ? {
-            x: layout2 === "horizontal" ? tooltipTicks[activeTooltipIndex].coordinate : validateChartX,
-            y: layout2 === "horizontal" ? validateChartY : tooltipTicks[activeTooltipIndex].coordinate
+            x: layout === "horizontal" ? tooltipTicks[activeTooltipIndex].coordinate : validateChartX,
+            y: layout === "horizontal" ? validateChartY : tooltipTicks[activeTooltipIndex].coordinate
           } : originCoordinate;
           _this.setState(_objectSpread(_objectSpread({}, data), {}, {
             activeLabel,
@@ -58797,7 +59642,7 @@ var generateCategoricalChart = function generateCategoricalChart2(_ref6) {
         var _this$state3 = _this.state, isTooltipActive = _this$state3.isTooltipActive, activeCoordinate = _this$state3.activeCoordinate, activePayload = _this$state3.activePayload, offset = _this$state3.offset, activeTooltipIndex = _this$state3.activeTooltipIndex, tooltipAxisBandSize = _this$state3.tooltipAxisBandSize;
         var tooltipEventType = _this.getTooltipEventType();
         var isActive = (_element$props$active = element.props.active) !== null && _element$props$active !== void 0 ? _element$props$active : isTooltipActive;
-        var layout2 = _this.props.layout;
+        var layout = _this.props.layout;
         var key = element.key || "_recharts-cursor";
         return /* @__PURE__ */ React$4.createElement(Cursor, {
           key,
@@ -58807,7 +59652,7 @@ var generateCategoricalChart = function generateCategoricalChart2(_ref6) {
           chartName,
           element,
           isActive,
-          layout: layout2,
+          layout,
           offset,
           tooltipAxisBandSize,
           tooltipEventType
@@ -58942,7 +59787,7 @@ var generateCategoricalChart = function generateCategoricalChart2(_ref6) {
           stroke: "#fff",
           payload: activePoint.payload,
           value: activePoint.value
-        }, filterProps$1(activeDot, false)), adaptEventHandlers(activeDot));
+        }, filterProps(activeDot, false)), adaptEventHandlers(activeDot));
         result.push(CategoricalChartWrapper2.renderActiveDot(activeDot, dotProps, "".concat(key, "-activePoint-").concat(childIndex)));
         if (basePoint) {
           result.push(CategoricalChartWrapper2.renderActiveDot(activeDot, _objectSpread(_objectSpread({}, dotProps), {}, {
@@ -59121,7 +59966,7 @@ var generateCategoricalChart = function generateCategoricalChart2(_ref6) {
     }, {
       key: "displayDefaultTooltip",
       value: function displayDefaultTooltip() {
-        var _this$props5 = this.props, children = _this$props5.children, data = _this$props5.data, height = _this$props5.height, layout2 = _this$props5.layout;
+        var _this$props5 = this.props, children = _this$props5.children, data = _this$props5.data, height = _this$props5.height, layout = _this$props5.layout;
         var tooltipElem = findChildByType(children, Tooltip);
         if (!tooltipElem) {
           return;
@@ -59134,7 +59979,7 @@ var generateCategoricalChart = function generateCategoricalChart2(_ref6) {
         var activePayload = getTooltipContent(this.state, data, defaultIndex, activeLabel);
         var independentAxisCoord = this.state.tooltipTicks[defaultIndex].coordinate;
         var dependentAxisCoord = (this.state.offset.top + height) / 2;
-        var isHorizontal = layout2 === "horizontal";
+        var isHorizontal = layout === "horizontal";
         var activeCoordinate = isHorizontal ? {
           x: independentAxisCoord,
           y: dependentAxisCoord
@@ -59229,8 +60074,8 @@ var generateCategoricalChart = function generateCategoricalChart2(_ref6) {
           chartX: Math.round(event.pageX - containerOffset.left),
           chartY: Math.round(event.pageY - containerOffset.top)
         };
-        var scale2 = boundingRect.width / element.offsetWidth || 1;
-        var rangeObj = this.inRange(e3.chartX, e3.chartY, scale2);
+        var scale = boundingRect.width / element.offsetWidth || 1;
+        var rangeObj = this.inRange(e3.chartX, e3.chartY, scale);
         if (!rangeObj) {
           return null;
         }
@@ -59255,10 +60100,10 @@ var generateCategoricalChart = function generateCategoricalChart2(_ref6) {
     }, {
       key: "inRange",
       value: function inRange2(x3, y2) {
-        var scale2 = arguments.length > 2 && arguments[2] !== void 0 ? arguments[2] : 1;
-        var layout2 = this.props.layout;
-        var scaledX = x3 / scale2, scaledY = y2 / scale2;
-        if (layout2 === "horizontal" || layout2 === "vertical") {
+        var scale = arguments.length > 2 && arguments[2] !== void 0 ? arguments[2] : 1;
+        var layout = this.props.layout;
+        var scaledX = x3 / scale, scaledY = y2 / scale;
+        if (layout === "horizontal" || layout === "vertical") {
           var offset = this.state.offset;
           var isInRange = scaledX >= offset.left && scaledX <= offset.left + offset.width && scaledY >= offset.top && scaledY <= offset.top + offset.height;
           return isInRange ? {
@@ -59426,7 +60271,7 @@ var generateCategoricalChart = function generateCategoricalChart2(_ref6) {
           return null;
         }
         var _this$props6 = this.props, children = _this$props6.children, className = _this$props6.className, width = _this$props6.width, height = _this$props6.height, style2 = _this$props6.style, compact2 = _this$props6.compact, title = _this$props6.title, desc = _this$props6.desc, others = _objectWithoutProperties(_this$props6, _excluded2);
-        var attrs = filterProps$1(others, false);
+        var attrs = filterProps(others, false);
         if (compact2) {
           return /* @__PURE__ */ React$4.createElement(ChartLayoutContextProvider, {
             state: this.state,
@@ -59495,7 +60340,7 @@ var generateCategoricalChart = function generateCategoricalChart2(_ref6) {
     syncMethod: "index"
   }, defaultProps2));
   _defineProperty(CategoricalChartWrapper, "getDerivedStateFromProps", function(nextProps, prevState) {
-    var dataKey = nextProps.dataKey, data = nextProps.data, children = nextProps.children, width = nextProps.width, height = nextProps.height, layout2 = nextProps.layout, stackOffset = nextProps.stackOffset, margin = nextProps.margin;
+    var dataKey = nextProps.dataKey, data = nextProps.data, children = nextProps.children, width = nextProps.width, height = nextProps.height, layout = nextProps.layout, stackOffset = nextProps.stackOffset, margin = nextProps.margin;
     var dataStartIndex = prevState.dataStartIndex, dataEndIndex = prevState.dataEndIndex;
     if (prevState.updateId === void 0) {
       var defaultState = createDefaultState(nextProps);
@@ -59510,13 +60355,13 @@ var generateCategoricalChart = function generateCategoricalChart2(_ref6) {
         prevData: data,
         prevWidth: width,
         prevHeight: height,
-        prevLayout: layout2,
+        prevLayout: layout,
         prevStackOffset: stackOffset,
         prevMargin: margin,
         prevChildren: children
       });
     }
-    if (dataKey !== prevState.prevDataKey || data !== prevState.prevData || width !== prevState.prevWidth || height !== prevState.prevHeight || layout2 !== prevState.prevLayout || stackOffset !== prevState.prevStackOffset || !shallowEqual(margin, prevState.prevMargin)) {
+    if (dataKey !== prevState.prevDataKey || data !== prevState.prevData || width !== prevState.prevWidth || height !== prevState.prevHeight || layout !== prevState.prevLayout || stackOffset !== prevState.prevStackOffset || !shallowEqual(margin, prevState.prevMargin)) {
       var _defaultState = createDefaultState(nextProps);
       var keepFromPrevState = {
         // (chartX, chartY) are (0,0) in default state, but we want to keep the last mouse position to avoid
@@ -59527,7 +60372,7 @@ var generateCategoricalChart = function generateCategoricalChart2(_ref6) {
         // the case, the tooltip disappears and immediately re-appears, causing a flickering effect
         isTooltipActive: prevState.isTooltipActive
       };
-      var updatesToState = _objectSpread(_objectSpread({}, getTooltipData(prevState, data, layout2)), {}, {
+      var updatesToState = _objectSpread(_objectSpread({}, getTooltipData(prevState, data, layout)), {}, {
         updateId: prevState.updateId + 1
       });
       var newState = _objectSpread(_objectSpread(_objectSpread({}, _defaultState), keepFromPrevState), updatesToState);
@@ -59538,7 +60383,7 @@ var generateCategoricalChart = function generateCategoricalChart2(_ref6) {
         prevData: data,
         prevWidth: width,
         prevHeight: height,
-        prevLayout: layout2,
+        prevLayout: layout,
         prevStackOffset: stackOffset,
         prevMargin: margin,
         prevChildren: children
@@ -59602,123 +60447,6 @@ var LineChart = generateCategoricalChart({
   }],
   formatAxisMap
 });
-function useToast() {
-  const [toast, setToast] = reactExports.useState(null);
-  const timerRef = reactExports.useRef(null);
-  const show = (message, type = "success") => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    setToast({ message, type });
-    timerRef.current = setTimeout(() => setToast(null), 3e3);
-  };
-  return { toast, show };
-}
-function Toast({ toast }) {
-  if (!toast) return null;
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(
-    "div",
-    {
-      "data-ocid": "admin.toast",
-      className: `fixed top-4 right-4 z-50 px-5 py-3 rounded-lg shadow-lg text-white font-semibold transition-all ${toast.type === "success" ? "bg-[#006A4E]" : "bg-[#DC143C]"}`,
-      children: toast.message
-    }
-  );
-}
-function formatDate$5(ts) {
-  return new Date(Number(ts) / 1e6).toLocaleDateString("bn-BD");
-}
-function StatusBadge({ status }) {
-  const map2 = {
-    [MemberStatus.pending]: {
-      label: "অপেক্ষমাণ",
-      cls: "bg-yellow-100 text-yellow-800"
-    },
-    [MemberStatus.approved]: {
-      label: "অনুমোদিত",
-      cls: "bg-green-100 text-green-800"
-    },
-    [MemberStatus.rejected]: {
-      label: "প্রত্যাখ্যাত",
-      cls: "bg-red-100 text-red-800"
-    }
-  };
-  const { label, cls } = map2[status] ?? {
-    label: status,
-    cls: "bg-gray-100 text-gray-800"
-  };
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `px-2 py-0.5 rounded text-xs font-semibold ${cls}`, children: label });
-}
-function Spinner() {
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" });
-}
-const TABS = [
-  "ড্যাশবোর্ড",
-  "অনুমোদন প্রক্রিয়াধীন",
-  "সকল সদস্য",
-  "নোটিশ",
-  "গ্যালারি",
-  "চ্যাট বার্তা",
-  "পদবী",
-  "প্রাক্তন ও সাফল্য"
-];
-function AdminPage() {
-  const navigate = useNavigate();
-  const { isAdmin, clearAdminSession } = useAuth();
-  const { actor } = useBackend();
-  const qc = useQueryClient();
-  const { toast, show } = useToast();
-  const [activeTab, setActiveTab] = reactExports.useState(0);
-  reactExports.useEffect(() => {
-    if (!isAdmin) void navigate({ to: "/admin/login" });
-  }, [isAdmin, navigate]);
-  if (!isAdmin) return null;
-  const handleLogout = () => {
-    clearAdminSession();
-    void navigate({ to: "/" });
-  };
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-h-screen bg-[#f4f6f0] font-body", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx(Toast, { toast }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { className: "bg-[#1a2e1a] text-white px-4 py-3 flex items-center justify-between sticky top-0 z-40 shadow-lg", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-9 h-9 rounded-full bg-[#DC143C] flex items-center justify-center font-bold text-sm", children: "ছা" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-display font-bold text-sm leading-tight", children: "২নং কপিলমুনি ইউনিয়ন ছাত্রদল" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-green-300", children: "প্রশাসন প্যানেল" })
-        ] })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "button",
-        {
-          type: "button",
-          "data-ocid": "admin.logout_button",
-          onClick: handleLogout,
-          className: "bg-[#DC143C] hover:bg-red-700 text-white text-xs px-3 py-1.5 rounded font-semibold transition-colors",
-          children: "লগ আউট"
-        }
-      )
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "bg-[#1a2e1a] overflow-x-auto", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex min-w-max", children: TABS.map((tab, i2) => /* @__PURE__ */ jsxRuntimeExports.jsx(
-      "button",
-      {
-        type: "button",
-        "data-ocid": `admin.tab.${i2 + 1}`,
-        onClick: () => setActiveTab(i2),
-        className: `px-4 py-2.5 text-sm whitespace-nowrap font-semibold transition-colors border-b-2 ${activeTab === i2 ? "border-[#DC143C] text-white bg-[#DC143C]/10" : "border-transparent text-green-300 hover:text-white"}`,
-        children: tab
-      },
-      tab
-    )) }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("main", { className: "max-w-6xl mx-auto px-4 py-6", children: [
-      activeTab === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(DashboardTab, { actor }),
-      activeTab === 1 && /* @__PURE__ */ jsxRuntimeExports.jsx(PendingTab, { actor, qc, show }),
-      activeTab === 2 && /* @__PURE__ */ jsxRuntimeExports.jsx(MembersTab, { actor, qc, show }),
-      activeTab === 3 && /* @__PURE__ */ jsxRuntimeExports.jsx(NoticesTab, { actor, qc, show }),
-      activeTab === 4 && /* @__PURE__ */ jsxRuntimeExports.jsx(GalleryTab, { actor, qc, show }),
-      activeTab === 5 && /* @__PURE__ */ jsxRuntimeExports.jsx(ChatTab, { actor, qc, show }),
-      activeTab === 6 && /* @__PURE__ */ jsxRuntimeExports.jsx(DesignationTab, { actor, qc, show }),
-      activeTab === 7 && /* @__PURE__ */ jsxRuntimeExports.jsx(AlumniAchievementsTab, { actor, qc, show })
-    ] })
-  ] });
-}
 const growthData = [
   { month: "জানু", সদস্য: 12 },
   { month: "ফেব্রু", সদস্য: 28 },
@@ -59727,7 +60455,8 @@ const growthData = [
   { month: "মে", সদস্য: 78 },
   { month: "জুন", সদস্য: 95 }
 ];
-function DashboardTab({ actor }) {
+function DashboardSection() {
+  const { actor } = useBackend();
   const { data: stats } = useQuery({
     queryKey: ["memberStats"],
     queryFn: async () => {
@@ -59744,41 +60473,91 @@ function DashboardTab({ actor }) {
   });
   const cards = [
     {
+      label: "মোট সদস্য",
+      value: stats ? Number(stats.total) : "—",
+      color: "#006A4E",
+      bg: "#e8f5f0",
+      icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Users, { className: "w-6 h-6" })
+    },
+    {
+      label: "অনুমোদিত সদস্য",
+      value: stats ? Number(stats.total) - Number(stats.pendingCount) : "—",
+      color: "#1a6b3e",
+      bg: "#d4edda",
+      icon: /* @__PURE__ */ jsxRuntimeExports.jsx(CircleCheckBig, { className: "w-6 h-6" })
+    },
+    {
+      label: "অপেক্ষমাণ অনুরোধ",
+      value: stats ? Number(stats.pendingCount) : "—",
+      color: "#e67e22",
+      bg: "#fef3e2",
+      icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Clock, { className: "w-6 h-6" })
+    },
+    {
       label: "আজ যোগ দিয়েছেন",
       value: stats ? Number(stats.joinedToday) : "—",
-      color: "#006A4E"
+      color: "#DC143C",
+      bg: "#fde8ec",
+      icon: /* @__PURE__ */ jsxRuntimeExports.jsx(TrendingUp, { className: "w-6 h-6" })
     },
     {
       label: "গতকাল যোগ দিয়েছেন",
       value: stats ? Number(stats.joinedYesterday) : "—",
-      color: "#1a5276"
+      color: "#1a5276",
+      bg: "#e3f0fc",
+      icon: /* @__PURE__ */ jsxRuntimeExports.jsx(ChartNoAxesColumn, { className: "w-6 h-6" })
     },
     {
-      label: "মোট সদস্য",
-      value: stats ? Number(stats.total) : "—",
-      color: "#DC143C"
-    },
-    {
-      label: "অনুমোদন প্রক্রিয়াধীন",
-      value: stats ? Number(stats.pendingCount) : "—",
-      color: "#e67e22"
+      label: "প্রত্যাখ্যাত সদস্য",
+      value: 0,
+      color: "#7f8c8d",
+      bg: "#f0f3f5",
+      icon: /* @__PURE__ */ jsxRuntimeExports.jsx(CircleX, { className: "w-6 h-6" })
     }
   ];
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "data-ocid": "admin.dashboard_section", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-xl font-display font-bold text-[#1a2e1a] mb-5", children: "ড্যাশবোর্ড" }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8", children: cards.map((c2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      SectionHeader,
+      {
+        icon: "📊",
+        title: "ড্যাশবোর্ড",
+        description: "সামগ্রিক পরিসংখ্যান এবং সদস্যপদ কার্যক্রমের সংক্ষিপ্ত বিবরণ"
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8", children: cards.map((c2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
       "div",
       {
-        className: "bg-card rounded-xl p-4 shadow border border-border text-center",
+        className: "rounded-xl p-4 shadow-sm border border-border flex items-center gap-3 transition-transform hover:scale-[1.02]",
+        style: { background: c2.bg },
         children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-3xl font-bold", style: { color: c2.color }, children: c2.value }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground mt-1 font-semibold", children: c2.label })
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "div",
+            {
+              className: "w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0",
+              style: { background: c2.color, color: "white" },
+              children: c2.icon
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "p",
+              {
+                className: "text-2xl font-bold leading-none",
+                style: { color: c2.color },
+                children: c2.value
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground mt-1 font-medium", children: c2.label })
+          ] })
         ]
       },
       c2.label
     )) }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-card rounded-xl p-5 shadow border border-border", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "font-semibold text-[#1a2e1a] mb-4", children: "সদস্যপদ বৃদ্ধির গ্রাফ (জানুয়ারি – জুন)" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("h3", { className: "font-semibold text-[#1a2e1a] mb-4 flex items-center gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(ChartNoAxesColumn, { className: "w-4 h-4 text-[#006A4E]" }),
+        "সদস্যপদ বৃদ্ধির গ্রাফ (জানুয়ারি – জুন)"
+      ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(ResponsiveContainer, { width: "100%", height: 260, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(LineChart, { data: growthData, children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(CartesianGrid, { strokeDasharray: "3 3", stroke: "#e0e0e0" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(XAxis, { dataKey: "month", tick: { fontSize: 12 } }),
@@ -59790,7 +60569,7 @@ function DashboardTab({ actor }) {
             type: "monotone",
             dataKey: "সদস্য",
             stroke: "#DC143C",
-            strokeWidth: 2,
+            strokeWidth: 2.5,
             dot: { r: 4 }
           }
         )
@@ -59798,137 +60577,292 @@ function DashboardTab({ actor }) {
     ] })
   ] });
 }
-function PendingTab({ actor, qc, show }) {
-  const { data: pending = [] } = useQuery({
-    queryKey: ["members", "pending"],
-    queryFn: async () => {
-      if (!actor) return [];
-      return actor.listMembersByStatus(MemberStatus.pending);
-    },
+function DesignationRankSection({
+  show
+}) {
+  const { actor } = useBackend();
+  const qc = useQueryClient();
+  const [title, setTitle] = reactExports.useState("");
+  const [rank, setRank] = reactExports.useState("");
+  const [editMember, setEditMember] = reactExports.useState(null);
+  const [editDesig, setEditDesig] = reactExports.useState("");
+  const [editRank, setEditRank] = reactExports.useState("");
+  const { data: designations = [] } = useQuery({
+    queryKey: ["designations"],
+    queryFn: async () => actor ? actor.listDesignations() : [],
     enabled: !!actor
   });
-  const [rejectModal, setRejectModal] = reactExports.useState(null);
-  const [rejectReason, setRejectReason] = reactExports.useState("");
-  const approve = useMutation({
-    mutationFn: async (id2) => {
+  const { data: approvedMembers = [] } = useQuery({
+    queryKey: ["members", "approved"],
+    queryFn: async () => actor ? actor.listMembersByStatus(MemberStatus.approved) : [],
+    enabled: !!actor
+  });
+  const addDesignation = useMutation({
+    mutationFn: async ({ t: t3, r: r2 }) => {
       if (!actor) throw new Error("no actor");
-      return actor.approveMember(id2);
+      return actor.addDesignation(t3, r2);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["designations"] });
+      show("পদবী যোগ করা হয়েছে");
+      setTitle("");
+      setRank("");
+    },
+    onError: () => show("পদবী যোগ ব্যর্থ হয়েছে", "error")
+  });
+  const deleteDesignation = useMutation({
+    mutationFn: async (id) => {
+      if (!actor) throw new Error("no actor");
+      return actor.deleteDesignation(id);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["designations"] });
+      show("পদবী মুছে ফেলা হয়েছে");
+    },
+    onError: () => show("মুছে ফেলা ব্যর্থ হয়েছে", "error")
+  });
+  const updateDesignation = useMutation({
+    mutationFn: async ({
+      id,
+      desig,
+      r: r2
+    }) => {
+      if (!actor) throw new Error("no actor");
+      return actor.updateMemberDesignation(id, desig, r2);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["members"] });
-      qc.invalidateQueries({ queryKey: ["memberStats"] });
-      show("সদস্য অনুমোদিত হয়েছে");
+      show("পদবী আপডেট হয়েছে");
+      setEditMember(null);
     },
-    onError: () => show("অনুমোদন ব্যর্থ হয়েছে", "error")
+    onError: () => show("আপডেট ব্যর্থ হয়েছে", "error")
   });
-  const reject = useMutation({
-    mutationFn: async ({ id: id2, reason }) => {
-      if (!actor) throw new Error("no actor");
-      return actor.rejectMember(id2, reason);
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["members"] });
-      qc.invalidateQueries({ queryKey: ["memberStats"] });
-      show("সদস্য প্রত্যাখ্যাত হয়েছে");
-      setRejectModal(null);
-      setRejectReason("");
-    },
-    onError: () => show("প্রত্যাখ্যান ব্যর্থ হয়েছে", "error")
-  });
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "data-ocid": "admin.pending_section", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("h2", { className: "text-xl font-display font-bold text-[#1a2e1a] mb-5", children: [
-      "অনুমোদন প্রক্রিয়াধীন (",
-      pending.length,
-      ")"
-    ] }),
-    pending.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-      "div",
+  const sortedDesig = [...designations].sort(
+    (a2, b2) => Number(a2.rank) - Number(b2.rank)
+  );
+  const sortedMembers = [...approvedMembers].sort(
+    (a2, b2) => Number(a2.rank) - Number(b2.rank)
+  );
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "data-ocid": "admin.designations_section", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      SectionHeader,
       {
-        "data-ocid": "admin.pending.empty_state",
-        className: "bg-card rounded-xl p-10 text-center text-muted-foreground",
-        children: "কোনো অপেক্ষমাণ সদস্য নেই"
+        icon: "🏅",
+        title: "পদবী ও র‍্যাংক",
+        description: "সদস্যদের পদবী পরিবর্তন করুন, র‍্যাংক সাজান এবং পদবীর টেমপ্লেট পরিচালনা করুন"
       }
-    ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "space-y-3", children: pending.map((m2, i2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "div",
-      {
-        "data-ocid": `admin.pending.item.${i2 + 1}`,
-        className: "bg-card rounded-xl p-4 shadow border border-border flex flex-col sm:flex-row sm:items-center gap-3",
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 min-w-0", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-bold text-[#1a2e1a] truncate", children: m2.fullName }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-sm text-muted-foreground", children: [
-              m2.designation,
-              " · ",
-              m2.phone
-            ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-xs text-muted-foreground", children: [
-              m2.email,
-              " · ",
-              formatDate$5(m2.registeredAt)
-            ] })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2 shrink-0", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              "button",
-              {
-                type: "button",
-                "data-ocid": `admin.pending.approve_button.${i2 + 1}`,
-                onClick: () => approve.mutate(m2.id),
-                disabled: approve.isPending,
-                className: "bg-[#006A4E] hover:bg-green-800 text-white px-3 py-1.5 rounded text-sm font-semibold flex items-center gap-1 disabled:opacity-60",
-                children: [
-                  approve.isPending ? /* @__PURE__ */ jsxRuntimeExports.jsx(Spinner, {}) : null,
-                  " অনুমোদন"
-                ]
-              }
-            ),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "button",
-              {
-                type: "button",
-                "data-ocid": `admin.pending.reject_button.${i2 + 1}`,
-                onClick: () => setRejectModal({ id: m2.id, name: m2.fullName }),
-                className: "bg-[#DC143C] hover:bg-red-700 text-white px-3 py-1.5 rounded text-sm font-semibold",
-                children: "প্রত্যাখ্যান"
-              }
-            )
-          ] })
-        ]
-      },
-      String(m2.id)
-    )) }),
-    rejectModal && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "div",
-      {
-        "data-ocid": "admin.reject.dialog",
-        className: "bg-card rounded-xl p-6 w-full max-w-md shadow-2xl",
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("h3", { className: "font-bold text-[#1a2e1a] mb-3", children: [
-            rejectModal.name,
-            " — প্রত্যাখ্যানের কারণ"
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "textarea",
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 lg:grid-cols-2 gap-6", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("h3", { className: "font-bold text-[#1a2e1a] mb-3 flex items-center gap-2", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "w-5 h-5 bg-[#006A4E] text-white rounded text-xs flex items-center justify-center font-bold", children: "M" }),
+          "অনুমোদিত সদস্যদের পদবী সম্পাদনা"
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+          sortedMembers.map((m2, i2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "div",
             {
-              "data-ocid": "admin.reject.textarea",
-              className: "w-full border border-input rounded-lg p-3 text-sm min-h-[100px] resize-none",
-              placeholder: "কারণ লিখুন...",
-              value: rejectReason,
-              onChange: (e3) => setRejectReason(e3.target.value)
+              "data-ocid": `admin.designations.member.${i2 + 1}`,
+              className: "bg-card rounded-lg px-4 py-3 border border-border flex items-center gap-3",
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(GripVertical, { className: "w-4 h-4 text-muted-foreground flex-shrink-0" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-6 h-6 bg-[#006A4E] text-white text-xs rounded-full flex items-center justify-center flex-shrink-0", children: Number(m2.rank) || i2 + 1 }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 min-w-0", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-semibold text-[#1a2e1a] text-sm truncate", children: m2.fullName }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground", children: m2.designation })
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "button",
+                  {
+                    type: "button",
+                    "data-ocid": `admin.designations.edit_button.${i2 + 1}`,
+                    onClick: () => {
+                      setEditMember(m2);
+                      setEditDesig(m2.designation);
+                      setEditRank(String(m2.rank));
+                    },
+                    className: "p-1.5 rounded hover:bg-muted transition-colors text-[#1a2e1a]",
+                    children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pencil, { className: "w-3.5 h-3.5" })
+                  }
+                )
+              ]
+            },
+            String(m2.id)
+          )),
+          sortedMembers.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "p",
+            {
+              "data-ocid": "admin.designations.members.empty_state",
+              className: "text-center text-muted-foreground py-6 text-sm",
+              children: "কোনো অনুমোদিত সদস্য নেই"
+            }
+          )
+        ] })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("h3", { className: "font-bold text-[#1a2e1a] mb-3 flex items-center gap-2", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "w-5 h-5 bg-[#DC143C] text-white rounded text-xs flex items-center justify-center font-bold", children: "T" }),
+          "পদবীর টেমপ্লেট"
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "bg-card rounded-xl p-4 border border-border mb-3", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col sm:flex-row gap-2", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              "data-ocid": "admin.designations.title_input",
+              type: "text",
+              placeholder: "পদবীর নাম (যেমন: সভাপতি)",
+              value: title,
+              onChange: (e3) => setTitle(e3.target.value),
+              className: "flex-1 border border-input rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#006A4E]"
             }
           ),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2 mt-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              "data-ocid": "admin.designations.rank_input",
+              type: "number",
+              placeholder: "র‌্যাংক",
+              value: rank,
+              onChange: (e3) => setRank(e3.target.value),
+              className: "w-24 border border-input rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#006A4E]"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "button",
+            {
+              type: "button",
+              "data-ocid": "admin.designations.submit_button",
+              disabled: !title.trim() || !rank || addDesignation.isPending,
+              onClick: () => addDesignation.mutate({
+                t: title,
+                r: BigInt(rank)
+              }),
+              className: "bg-[#006A4E] hover:bg-green-800 text-white px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-1.5 disabled:opacity-60",
+              children: [
+                addDesignation.isPending && /* @__PURE__ */ jsxRuntimeExports.jsx(Spinner, { small: true }),
+                "যোগ করুন"
+              ]
+            }
+          )
+        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+          sortedDesig.map((d2, i2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "div",
+            {
+              "data-ocid": `admin.designations.item.${i2 + 1}`,
+              className: "bg-card rounded-lg px-4 py-2.5 border border-border flex items-center justify-between",
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs w-6 h-6 bg-[#1a2e1a] text-white rounded-full flex items-center justify-center font-bold flex-shrink-0", children: String(d2.rank) }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-medium text-sm", children: d2.title })
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "button",
+                  {
+                    type: "button",
+                    "data-ocid": `admin.designations.delete_button.${i2 + 1}`,
+                    onClick: () => deleteDesignation.mutate(d2.id),
+                    disabled: deleteDesignation.isPending,
+                    className: "text-[#DC143C] hover:text-red-700 text-xs font-semibold disabled:opacity-60 p-1",
+                    children: /* @__PURE__ */ jsxRuntimeExports.jsx(X$1, { className: "w-3.5 h-3.5" })
+                  }
+                )
+              ]
+            },
+            String(d2.id)
+          )),
+          sortedDesig.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "p",
+            {
+              "data-ocid": "admin.designations.empty_state",
+              className: "text-center text-muted-foreground py-6 text-sm",
+              children: "কোনো পদবী নেই"
+            }
+          )
+        ] })
+      ] })
+    ] }),
+    editMember && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        "data-ocid": "admin.designations.edit.dialog",
+        className: "bg-card rounded-xl p-6 w-full max-w-md shadow-2xl border border-border",
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between mb-4", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("h3", { className: "font-bold text-[#1a2e1a]", children: [
+              "পদবী সম্পাদনা: ",
+              editMember.fullName
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                onClick: () => setEditMember(null),
+                className: "w-8 h-8 flex items-center justify-center rounded-full hover:bg-muted",
+                children: /* @__PURE__ */ jsxRuntimeExports.jsx(X$1, { className: "w-4 h-4" })
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-3", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "label",
+                {
+                  htmlFor: "edit-designation",
+                  className: "text-xs font-semibold text-muted-foreground mb-1 block",
+                  children: "নতুন পদবী"
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "input",
+                {
+                  id: "edit-designation",
+                  "data-ocid": "admin.designations.edit.desig_input",
+                  type: "text",
+                  value: editDesig,
+                  onChange: (e3) => setEditDesig(e3.target.value),
+                  className: "w-full border border-input rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#006A4E]"
+                }
+              )
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "label",
+                {
+                  htmlFor: "edit-rank",
+                  className: "text-xs font-semibold text-muted-foreground mb-1 block",
+                  children: "নতুন র‌্যাংক নম্বর"
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "input",
+                {
+                  id: "edit-rank",
+                  "data-ocid": "admin.designations.edit.rank_input",
+                  type: "number",
+                  value: editRank,
+                  onChange: (e3) => setEditRank(e3.target.value),
+                  className: "w-full border border-input rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#006A4E]"
+                }
+              )
+            ] })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-3 mt-5", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs(
               "button",
               {
                 type: "button",
-                "data-ocid": "admin.reject.confirm_button",
-                disabled: !rejectReason.trim() || reject.isPending,
-                onClick: () => reject.mutate({ id: rejectModal.id, reason: rejectReason }),
-                className: "flex-1 bg-[#DC143C] hover:bg-red-700 text-white py-2 rounded font-semibold text-sm flex items-center justify-center gap-1 disabled:opacity-60",
+                "data-ocid": "admin.designations.edit.save_button",
+                disabled: !editDesig.trim() || !editRank || updateDesignation.isPending,
+                onClick: () => updateDesignation.mutate({
+                  id: editMember.id,
+                  desig: editDesig,
+                  r: BigInt(editRank)
+                }),
+                className: "flex-1 bg-[#006A4E] hover:bg-green-800 text-white py-2.5 rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-60",
                 children: [
-                  reject.isPending ? /* @__PURE__ */ jsxRuntimeExports.jsx(Spinner, {}) : null,
-                  " নিশ্চিত করুন"
+                  updateDesignation.isPending && /* @__PURE__ */ jsxRuntimeExports.jsx(Spinner, { small: true }),
+                  "সংরক্ষণ করুন"
                 ]
               }
             ),
@@ -59936,12 +60870,8 @@ function PendingTab({ actor, qc, show }) {
               "button",
               {
                 type: "button",
-                "data-ocid": "admin.reject.cancel_button",
-                onClick: () => {
-                  setRejectModal(null);
-                  setRejectReason("");
-                },
-                className: "flex-1 border border-border py-2 rounded font-semibold text-sm hover:bg-muted",
+                onClick: () => setEditMember(null),
+                className: "flex-1 border border-border py-2.5 rounded-lg font-semibold hover:bg-muted",
                 children: "বাতিল"
               }
             )
@@ -59951,11 +60881,236 @@ function PendingTab({ actor, qc, show }) {
     ) })
   ] });
 }
-function MembersTab({ actor, qc, show }) {
+function GallerySection({
+  show
+}) {
+  const { actor } = useBackend();
+  const qc = useQueryClient();
+  const [caption, setCaption] = reactExports.useState("");
+  const [uploaderName, setUploaderName] = reactExports.useState("");
+  const [file, setFile] = reactExports.useState(null);
+  const [uploading, setUploading] = reactExports.useState(false);
+  const [preview, setPreview] = reactExports.useState(null);
+  const [deleteConfirm, setDeleteConfirm] = reactExports.useState(null);
+  const { data: photos = [] } = useQuery({
+    queryKey: ["gallery"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.listGalleryPhotos();
+    },
+    enabled: !!actor
+  });
+  const deletePhoto = useMutation({
+    mutationFn: async (id) => {
+      if (!actor) throw new Error("no actor");
+      return actor.deleteGalleryPhoto(id);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["gallery"] });
+      show("ছবি মুছে ফেলা হয়েছে");
+      setDeleteConfirm(null);
+    },
+    onError: () => show("মুছে ফেলা ব্যর্থ হয়েছে", "error")
+  });
+  const handleFileChange = (f2) => {
+    setFile(f2);
+    if (f2) {
+      const reader = new FileReader();
+      reader.onload = (e3) => {
+        var _a3;
+        return setPreview((_a3 = e3.target) == null ? void 0 : _a3.result);
+      };
+      reader.readAsDataURL(f2);
+    } else {
+      setPreview(null);
+    }
+  };
+  const handleUpload = async () => {
+    if (!actor || !file || !caption.trim() || !uploaderName.trim()) return;
+    setUploading(true);
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      const photoBlob = ExternalBlob2.fromBytes(bytes);
+      const payload = {
+        photoBlob,
+        uploaderName,
+        caption
+      };
+      await actor.addGalleryPhoto(payload);
+      qc.invalidateQueries({ queryKey: ["gallery"] });
+      show("ছবি সফলভাবে আপলোড হয়েছে");
+      setCaption("");
+      setUploaderName("");
+      setFile(null);
+      setPreview(null);
+    } catch {
+      show("আপলোড ব্যর্থ হয়েছে", "error");
+    } finally {
+      setUploading(false);
+    }
+  };
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "data-ocid": "admin.gallery_section", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      SectionHeader,
+      {
+        icon: "🖼️",
+        title: "গ্যালারি",
+        description: "এখান থেকে নতুন ছবি আপলোড করুন এবং বিদ্যমান ছবি পরিচালনা করুন"
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-card rounded-xl p-5 shadow-sm border border-border mb-6", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "font-semibold mb-4 text-[#1a2e1a]", children: "নতুন ছবি যোগ করুন" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-3", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              "data-ocid": "admin.gallery.uploader_input",
+              type: "text",
+              placeholder: "আপলোডকারীর নাম *",
+              value: uploaderName,
+              onChange: (e3) => setUploaderName(e3.target.value),
+              className: "w-full border border-input rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#006A4E]"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              "data-ocid": "admin.gallery.caption_input",
+              type: "text",
+              placeholder: "ক্যাপশন *",
+              value: caption,
+              onChange: (e3) => setCaption(e3.target.value),
+              className: "w-full border border-input rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#006A4E]"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex items-center gap-3 border-2 border-dashed border-input rounded-lg p-3 cursor-pointer hover:border-[#006A4E] transition-colors group", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Upload, { className: "w-5 h-5 text-muted-foreground group-hover:text-[#006A4E]" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm text-muted-foreground group-hover:text-foreground", children: file ? file.name : "ছবি নির্বাচন করুন" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "input",
+              {
+                "data-ocid": "admin.gallery.upload_button",
+                type: "file",
+                accept: "image/*",
+                className: "hidden",
+                onChange: (e3) => {
+                  var _a3;
+                  return handleFileChange(((_a3 = e3.target.files) == null ? void 0 : _a3[0]) ?? null);
+                }
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "button",
+            {
+              type: "button",
+              "data-ocid": "admin.gallery.submit_button",
+              disabled: !file || !caption.trim() || !uploaderName.trim() || uploading,
+              onClick: handleUpload,
+              className: "w-full bg-[#006A4E] hover:bg-green-800 text-white py-2 rounded-lg font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-60 transition-colors",
+              children: [
+                uploading ? /* @__PURE__ */ jsxRuntimeExports.jsx(Spinner, { small: true }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Upload, { className: "w-4 h-4" }),
+                "ছবি আপলোড করুন"
+              ]
+            }
+          )
+        ] }),
+        preview && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "img",
+            {
+              src: preview,
+              alt: "Preview",
+              className: "w-full h-44 object-cover rounded-xl border border-border"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              onClick: () => {
+                setFile(null);
+                setPreview(null);
+              },
+              className: "absolute top-2 right-2 bg-black/60 text-white rounded-full w-7 h-7 flex items-center justify-center hover:bg-black/80",
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(X$1, { className: "w-3.5 h-3.5" })
+            }
+          )
+        ] })
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4", children: [
+      photos.map((p2, i2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "div",
+        {
+          "data-ocid": `admin.gallery.item.${i2 + 1}`,
+          className: "bg-card rounded-xl overflow-hidden shadow-sm border border-border group",
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "img",
+                {
+                  src: p2.photoBlob.getDirectURL(),
+                  alt: p2.caption,
+                  className: "w-full h-36 object-cover"
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  type: "button",
+                  "data-ocid": `admin.gallery.delete_button.${i2 + 1}`,
+                  onClick: () => setDeleteConfirm(p2.id),
+                  className: "absolute top-2 right-2 bg-[#DC143C]/80 hover:bg-[#DC143C] text-white rounded-full w-7 h-7 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity",
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(X$1, { className: "w-3.5 h-3.5" })
+                }
+              )
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "p-2.5", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs font-semibold truncate", children: p2.caption }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground", children: p2.uploaderName })
+            ] })
+          ]
+        },
+        String(p2.id)
+      )),
+      photos.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "div",
+        {
+          "data-ocid": "admin.gallery.empty_state",
+          className: "col-span-4 bg-card rounded-xl p-12 text-center border border-border",
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-4xl mb-2", children: "🖼️" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-muted-foreground", children: "কোনো ছবি নেই" })
+          ]
+        }
+      )
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      ConfirmDialog,
+      {
+        open: deleteConfirm !== null,
+        message: "এই ছবিটি মুছে ফেলতে চান?",
+        onConfirm: () => deleteConfirm !== null && deletePhoto.mutate(deleteConfirm),
+        onCancel: () => setDeleteConfirm(null),
+        isPending: deletePhoto.isPending,
+        confirmLabel: "হ্যাঁ, মুছুন",
+        danger: true
+      }
+    )
+  ] });
+}
+function MemberManagementSection({
+  show
+}) {
+  const { actor } = useBackend();
+  const qc = useQueryClient();
   const [search, setSearch] = reactExports.useState("");
   const [statusFilter, setStatusFilter] = reactExports.useState("all");
   const [deleteConfirm, setDeleteConfirm] = reactExports.useState(null);
-  const { data: members = [] } = useQuery({
+  const { data: members = [], isLoading } = useQuery({
     queryKey: ["members", "all"],
     queryFn: async () => {
       if (!actor) return [];
@@ -59964,9 +61119,9 @@ function MembersTab({ actor, qc, show }) {
     enabled: !!actor
   });
   const deleteMember = useMutation({
-    mutationFn: async (id2) => {
+    mutationFn: async (id) => {
       if (!actor) throw new Error("no actor");
-      return actor.deleteMember(id2);
+      return actor.deleteMember(id);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["members"] });
@@ -59993,7 +61148,7 @@ function MembersTab({ actor, qc, show }) {
           m2.phone,
           m2.email,
           m2.status,
-          formatDate$5(m2.registeredAt)
+          formatDate$6(m2.registeredAt)
         ].join(",")
       );
       const csv = [header, ...rows].join("\n");
@@ -60001,38 +61156,24 @@ function MembersTab({ actor, qc, show }) {
       const url = URL.createObjectURL(blob);
       const a2 = document.createElement("a");
       a2.href = url;
-      a2.download = "members.csv";
+      a2.download = "chhatra-dal-members.csv";
       a2.click();
       URL.revokeObjectURL(url);
-      show(
-        "CSV ডাউনলোড হচ্ছে"
-      );
+      show("CSV ডাউনলোড হচ্ছে");
     } catch {
-      show(
-        "CSV ব্যর্থ হয়েছে",
-        "error"
-      );
+      show("CSV তৈরি ব্যর্থ হয়েছে", "error");
     }
   };
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "data-ocid": "admin.members_section", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col sm:flex-row sm:items-center gap-3 mb-5", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("h2", { className: "text-xl font-display font-bold text-[#1a2e1a] flex-1", children: [
-        "সকল সদস্য (",
-        filtered.length,
-        ")"
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "button",
-        {
-          type: "button",
-          "data-ocid": "admin.members.export_button",
-          onClick: handleExport,
-          className: "bg-[#1a2e1a] hover:bg-green-900 text-white px-4 py-2 rounded text-sm font-semibold",
-          children: "CSV ডাউনলোড"
-        }
-      )
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col sm:flex-row gap-3 mb-4", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      SectionHeader,
+      {
+        icon: "👥",
+        title: "সদস্য ব্যবস্থাপনা",
+        description: "এখান থেকে সকল সদস্য পরিচালনা করুন — দেখুন, খুঁজুন, সম্পাদনা করুন বা মুছে ফেলুন"
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mb-4", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(
         "input",
         {
@@ -60041,7 +61182,7 @@ function MembersTab({ actor, qc, show }) {
           placeholder: "নাম, ফোন বা ইমেইল খুঁজুন...",
           value: search,
           onChange: (e3) => setSearch(e3.target.value),
-          className: "flex-1 border border-input rounded-lg px-3 py-2 text-sm"
+          className: "flex-1 border border-input rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#006A4E] outline-none"
         }
       ),
       /* @__PURE__ */ jsxRuntimeExports.jsxs(
@@ -60058,9 +61199,19 @@ function MembersTab({ actor, qc, show }) {
             /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: MemberStatus.rejected, children: "প্রত্যাখ্যাত" })
           ]
         }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          type: "button",
+          "data-ocid": "admin.members.export_button",
+          onClick: handleExport,
+          className: "bg-[#1a2e1a] hover:bg-green-900 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors",
+          children: "CSV ডাউনলোড"
+        }
       )
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "bg-card rounded-xl shadow border border-border overflow-x-auto", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("table", { className: "w-full text-sm min-w-[640px]", children: [
+    isLoading ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex justify-center py-12", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Spinner, {}) }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "bg-card rounded-xl shadow border border-border overflow-x-auto", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("table", { className: "w-full text-sm min-w-[660px]", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("thead", { className: "bg-[#1a2e1a] text-white", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("tr", { children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("th", { className: "px-4 py-3 text-left", children: "#" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("th", { className: "px-4 py-3 text-left", children: "নাম" }),
@@ -60074,7 +61225,7 @@ function MembersTab({ actor, qc, show }) {
         "td",
         {
           colSpan: 7,
-          className: "px-4 py-8 text-center text-muted-foreground",
+          className: "px-4 py-10 text-center text-muted-foreground",
           "data-ocid": "admin.members.empty_state",
           children: "কোনো সদস্য পাওয়া যায়নি"
         }
@@ -60082,21 +61233,34 @@ function MembersTab({ actor, qc, show }) {
         "tr",
         {
           "data-ocid": `admin.members.item.${i2 + 1}`,
-          className: "border-t border-border hover:bg-muted/30",
+          className: "border-t border-border hover:bg-muted/30 transition-colors",
           children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-4 py-3 text-muted-foreground", children: i2 + 1 }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-4 py-3 font-semibold truncate max-w-[160px]", children: m2.fullName }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-4 py-3 text-muted-foreground text-xs", children: i2 + 1 }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-4 py-3", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "img",
+                {
+                  src: m2.photoBlob.getDirectURL(),
+                  alt: m2.fullName,
+                  className: "w-8 h-8 rounded-full object-cover flex-shrink-0",
+                  onError: (e3) => {
+                    e3.target.style.display = "none";
+                  }
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-semibold truncate max-w-[140px]", children: m2.fullName })
+            ] }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-4 py-3 text-muted-foreground", children: m2.designation }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-4 py-3", children: m2.phone }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-4 py-3", children: /* @__PURE__ */ jsxRuntimeExports.jsx(StatusBadge, { status: m2.status }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-4 py-3 text-muted-foreground", children: formatDate$5(m2.registeredAt) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-4 py-3 text-muted-foreground text-xs", children: formatDate$6(m2.registeredAt) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-4 py-3 text-right", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
               "button",
               {
                 type: "button",
                 "data-ocid": `admin.members.delete_button.${i2 + 1}`,
                 onClick: () => setDeleteConfirm(m2.id),
-                className: "text-[#DC143C] hover:text-red-800 font-semibold text-xs",
+                className: "text-[#DC143C] hover:text-red-800 font-semibold text-xs px-2 py-1 rounded hover:bg-red-50 transition-colors",
                 children: "মুছুন"
               }
             ) })
@@ -60105,46 +61269,31 @@ function MembersTab({ actor, qc, show }) {
         String(m2.id)
       )) })
     ] }) }),
-    deleteConfirm !== null && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "div",
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      ConfirmDialog,
       {
-        "data-ocid": "admin.members.delete.dialog",
-        className: "bg-card rounded-xl p-6 w-full max-w-sm shadow-2xl text-center",
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-bold text-[#1a2e1a] mb-4", children: "আপনি কি নিশ্চিত যে এই সদস্যকে মুছে ফেলবেন?" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-3", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              "button",
-              {
-                type: "button",
-                "data-ocid": "admin.members.delete.confirm_button",
-                onClick: () => deleteMember.mutate(deleteConfirm),
-                disabled: deleteMember.isPending,
-                className: "flex-1 bg-[#DC143C] hover:bg-red-700 text-white py-2 rounded font-semibold flex items-center justify-center gap-1 disabled:opacity-60",
-                children: [
-                  deleteMember.isPending ? /* @__PURE__ */ jsxRuntimeExports.jsx(Spinner, {}) : null,
-                  " হ্যাঁ, মুছুন"
-                ]
-              }
-            ),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "button",
-              {
-                type: "button",
-                "data-ocid": "admin.members.delete.cancel_button",
-                onClick: () => setDeleteConfirm(null),
-                className: "flex-1 border border-border py-2 rounded font-semibold hover:bg-muted",
-                children: "বাতিল"
-              }
-            )
-          ] })
-        ]
+        open: deleteConfirm !== null,
+        message: "আপনি কি নিশ্চিত যে এই সদস্যকে স্থায়ীভাবে মুছে ফেলবেন?",
+        onConfirm: () => deleteConfirm !== null && deleteMember.mutate(deleteConfirm),
+        onCancel: () => setDeleteConfirm(null),
+        isPending: deleteMember.isPending,
+        confirmLabel: "হ্যাঁ, মুছুন",
+        danger: true
       }
-    ) })
+    )
   ] });
 }
-function NoticesTab({ actor, qc, show }) {
-  const [form, setForm] = reactExports.useState({ title: "", content: "", author: "" });
+function NoticesSection({
+  show
+}) {
+  const { actor } = useBackend();
+  const qc = useQueryClient();
+  const [form, setForm] = reactExports.useState({
+    title: "",
+    content: "",
+    author: ""
+  });
+  const [deleteConfirm, setDeleteConfirm] = reactExports.useState(null);
   const { data: notices = [] } = useQuery({
     queryKey: ["notices", "all"],
     queryFn: async () => {
@@ -60166,9 +61315,9 @@ function NoticesTab({ actor, qc, show }) {
     onError: () => show("নোটিশ যোগ ব্যর্থ হয়েছে", "error")
   });
   const archiveNotice = useMutation({
-    mutationFn: async (id2) => {
+    mutationFn: async (id) => {
       if (!actor) throw new Error("no actor");
-      return actor.archiveNotice(id2);
+      return actor.archiveNotice(id);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["notices"] });
@@ -60177,51 +61326,64 @@ function NoticesTab({ actor, qc, show }) {
     onError: () => show("আর্কাইভ ব্যর্থ হয়েছে", "error")
   });
   const deleteNotice = useMutation({
-    mutationFn: async (id2) => {
+    mutationFn: async (id) => {
       if (!actor) throw new Error("no actor");
-      return actor.deleteNotice(id2);
+      return actor.deleteNotice(id);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["notices"] });
       show("নোটিশ মুছে ফেলা হয়েছে");
+      setDeleteConfirm(null);
     },
     onError: () => show("মুছে ফেলা ব্যর্থ হয়েছে", "error")
   });
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "data-ocid": "admin.notices_section", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-xl font-display font-bold text-[#1a2e1a] mb-5", children: "নোটিশ ব্যবস্থাপনা" }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-card rounded-xl p-5 shadow border border-border mb-6", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "font-semibold mb-3 text-[#1a2e1a]", children: "নতুন নোটিশ যোগ করুন" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      SectionHeader,
+      {
+        icon: "📢",
+        title: "নোটিশ বোর্ড",
+        description: "এখান থেকে নতুন নোটিশ যোগ করুন, আর্কাইভ করুন বা মুছে ফেলুন"
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-card rounded-xl p-5 shadow-sm border border-border mb-6", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("h3", { className: "font-semibold mb-4 text-[#1a2e1a] flex items-center gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "w-5 h-5 bg-[#006A4E] text-white rounded text-xs flex items-center justify-center", children: "+" }),
+        "নতুন নোটিশ যোগ করুন"
+      ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-3", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "input",
-          {
-            "data-ocid": "admin.notices.title_input",
-            type: "text",
-            placeholder: "শিরোনাম",
-            value: form.title,
-            onChange: (e3) => setForm((f2) => ({ ...f2, title: e3.target.value })),
-            className: "w-full border border-input rounded-lg px-3 py-2 text-sm"
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "input",
-          {
-            "data-ocid": "admin.notices.author_input",
-            type: "text",
-            placeholder: "লেখক",
-            value: form.author,
-            onChange: (e3) => setForm((f2) => ({ ...f2, author: e3.target.value })),
-            className: "w-full border border-input rounded-lg px-3 py-2 text-sm"
-          }
-        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-3", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              "data-ocid": "admin.notices.title_input",
+              type: "text",
+              placeholder: "শিরোনাম *",
+              value: form.title,
+              onChange: (e3) => setForm((f2) => ({ ...f2, title: e3.target.value })),
+              className: "border border-input rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#006A4E]"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              "data-ocid": "admin.notices.author_input",
+              type: "text",
+              placeholder: "লেখক *",
+              value: form.author,
+              onChange: (e3) => setForm((f2) => ({ ...f2, author: e3.target.value })),
+              className: "border border-input rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#006A4E]"
+            }
+          )
+        ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           "textarea",
           {
             "data-ocid": "admin.notices.content_textarea",
-            placeholder: "বিষয়বস্তু",
+            placeholder: "নোটিশের বিষয়বস্তু লিখুন *",
             value: form.content,
             onChange: (e3) => setForm((f2) => ({ ...f2, content: e3.target.value })),
-            className: "w-full border border-input rounded-lg px-3 py-2 text-sm min-h-[100px] resize-none"
+            className: "w-full border border-input rounded-lg px-3 py-2 text-sm min-h-[100px] resize-none outline-none focus:ring-2 focus:ring-[#006A4E]"
           }
         ),
         /* @__PURE__ */ jsxRuntimeExports.jsxs(
@@ -60231,10 +61393,10 @@ function NoticesTab({ actor, qc, show }) {
             "data-ocid": "admin.notices.submit_button",
             disabled: !form.title.trim() || !form.content.trim() || !form.author.trim() || createNotice.isPending,
             onClick: () => createNotice.mutate(form),
-            className: "bg-[#006A4E] hover:bg-green-800 text-white px-5 py-2 rounded font-semibold text-sm flex items-center gap-2 disabled:opacity-60",
+            className: "bg-[#006A4E] hover:bg-green-800 text-white px-6 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 disabled:opacity-60 transition-colors",
             children: [
-              createNotice.isPending ? /* @__PURE__ */ jsxRuntimeExports.jsx(Spinner, {}) : null,
-              " নোটিশ যোগ করুন"
+              createNotice.isPending && /* @__PURE__ */ jsxRuntimeExports.jsx(Spinner, { small: true }),
+              "নোটিশ প্রকাশ করুন"
             ]
           }
         )
@@ -60245,21 +61407,21 @@ function NoticesTab({ actor, qc, show }) {
         "div",
         {
           "data-ocid": `admin.notices.item.${i2 + 1}`,
-          className: "bg-card rounded-xl p-4 shadow border border-border",
+          className: "bg-card rounded-xl p-4 shadow-sm border border-border",
           children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-start justify-between gap-3", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 min-w-0", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "font-bold text-[#1a2e1a] flex items-center gap-2", children: [
                 n2.title,
-                n2.archived && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded", children: "আর্কাইভড" })
+                n2.archived && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs bg-yellow-100 text-yellow-800 border border-yellow-200 px-2 py-0.5 rounded-full", children: "আর্কাইভড" })
               ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-xs text-muted-foreground", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-xs text-muted-foreground mt-0.5", children: [
                 n2.author,
                 " · ",
-                formatDate$5(n2.date)
+                formatDate$6(n2.date)
               ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm mt-1 text-foreground line-clamp-2", children: n2.content })
+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm mt-1.5 text-foreground line-clamp-2", children: n2.content })
             ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2 shrink-0", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-1.5 shrink-0", children: [
               !n2.archived && /* @__PURE__ */ jsxRuntimeExports.jsx(
                 "button",
                 {
@@ -60267,7 +61429,7 @@ function NoticesTab({ actor, qc, show }) {
                   "data-ocid": `admin.notices.archive_button.${i2 + 1}`,
                   onClick: () => archiveNotice.mutate(n2.id),
                   disabled: archiveNotice.isPending,
-                  className: "text-xs border border-border px-2 py-1 rounded hover:bg-muted font-semibold disabled:opacity-60",
+                  className: "text-xs border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted font-semibold disabled:opacity-60 transition-colors",
                   children: "আর্কাইভ"
                 }
               ),
@@ -60276,9 +61438,9 @@ function NoticesTab({ actor, qc, show }) {
                 {
                   type: "button",
                   "data-ocid": `admin.notices.delete_button.${i2 + 1}`,
-                  onClick: () => deleteNotice.mutate(n2.id),
+                  onClick: () => setDeleteConfirm(n2.id),
                   disabled: deleteNotice.isPending,
-                  className: "text-[#DC143C] hover:text-red-700 text-xs font-semibold disabled:opacity-60",
+                  className: "text-[#DC143C] hover:text-red-700 text-xs font-semibold px-2.5 py-1.5 rounded-lg hover:bg-red-50 disabled:opacity-60 transition-colors",
                   children: "মুছুন"
                 }
               )
@@ -60287,788 +61449,912 @@ function NoticesTab({ actor, qc, show }) {
         },
         String(n2.id)
       )),
-      notices.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      notices.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs(
         "div",
         {
           "data-ocid": "admin.notices.empty_state",
-          className: "bg-card rounded-xl p-8 text-center text-muted-foreground",
-          children: "কোনো নোটিশ নেই"
+          className: "bg-card rounded-xl p-10 text-center border border-border",
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-3xl mb-2", children: "📭" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-muted-foreground", children: "কোনো নোটিশ নেই" })
+          ]
         }
       )
-    ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      ConfirmDialog,
+      {
+        open: deleteConfirm !== null,
+        message: "এই নোটিশটি স্থায়ীভাবে মুছে ফেলতে চান?",
+        onConfirm: () => deleteConfirm !== null && deleteNotice.mutate(deleteConfirm),
+        onCancel: () => setDeleteConfirm(null),
+        isPending: deleteNotice.isPending,
+        confirmLabel: "হ্যাঁ, মুছুন",
+        danger: true
+      }
+    )
   ] });
 }
-function GalleryTab({ actor, qc, show }) {
-  const [caption, setCaption] = reactExports.useState("");
-  const [uploaderName, setUploaderName] = reactExports.useState("");
-  const [file, setFile] = reactExports.useState(null);
-  const [uploading, setUploading] = reactExports.useState(false);
-  const { data: photos = [] } = useQuery({
-    queryKey: ["gallery"],
+function RegistrationRequestsSection({
+  show
+}) {
+  const { actor } = useBackend();
+  const qc = useQueryClient();
+  const [approveModal, setApproveModal] = reactExports.useState(null);
+  const [adminSignature, setAdminSignature] = reactExports.useState("");
+  const [rejectModal, setRejectModal] = reactExports.useState(null);
+  const [rejectReason, setRejectReason] = reactExports.useState("");
+  const { data: pending = [], isLoading } = useQuery({
+    queryKey: ["members", "pending"],
     queryFn: async () => {
       if (!actor) return [];
-      return actor.listGalleryPhotos();
+      return actor.listMembersByStatus(MemberStatus.pending);
     },
     enabled: !!actor
   });
-  const deletePhoto = useMutation({
-    mutationFn: async (id2) => {
+  const approve = useMutation({
+    mutationFn: async ({ id, sig }) => {
       if (!actor) throw new Error("no actor");
-      return actor.deleteGalleryPhoto(id2);
+      return actor.approveMember(id, sig || null);
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["gallery"] });
-      show("ছবি মুছে ফেলা হয়েছে");
+      qc.invalidateQueries({ queryKey: ["members"] });
+      qc.invalidateQueries({ queryKey: ["memberStats"] });
+      show("সদস্য সফলভাবে অনুমোদিত হয়েছে");
+      setApproveModal(null);
+      setAdminSignature("");
     },
-    onError: () => show("মুছে ফেলা ব্যর্থ হয়েছে", "error")
+    onError: () => show("অনুমোদন ব্যর্থ হয়েছে", "error")
   });
-  const handleUpload = async () => {
-    if (!actor || !file || !caption.trim() || !uploaderName.trim()) return;
-    setUploading(true);
-    try {
-      const arrayBuffer = await file.arrayBuffer();
-      const bytes = new Uint8Array(arrayBuffer);
-      const photoBlob = ExternalBlob2.fromBytes(bytes);
-      const payload = {
-        photoBlob,
-        uploaderName,
-        caption
-      };
-      await actor.addGalleryPhoto(payload);
-      qc.invalidateQueries({ queryKey: ["gallery"] });
-      show("ছবি আপলোড হয়েছে");
-      setCaption("");
-      setUploaderName("");
-      setFile(null);
-    } catch {
-      show("আপলোড ব্যর্থ হয়েছে", "error");
-    } finally {
-      setUploading(false);
+  const reject = useMutation({
+    mutationFn: async ({ id, reason }) => {
+      if (!actor) throw new Error("no actor");
+      return actor.rejectMember(id, reason);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["members"] });
+      qc.invalidateQueries({ queryKey: ["memberStats"] });
+      show("সদস্য প্রত্যাখ্যাত হয়েছে");
+      setRejectModal(null);
+      setRejectReason("");
+    },
+    onError: () => show("প্রত্যাখ্যান ব্যর্থ হয়েছে", "error")
+  });
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "data-ocid": "admin.pending_section", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      SectionHeader,
+      {
+        icon: "📋",
+        title: `নিবন্ধন অনুরোধ (${pending.length})`,
+        description: "এই বিভাগ থেকে নিবন্ধন অনুরোধগুলো পর্যালোচনা করুন এবং অনুমোদন দিন"
+      }
+    ),
+    isLoading && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex justify-center py-12", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Spinner, {}) }),
+    !isLoading && pending.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        "data-ocid": "admin.pending.empty_state",
+        className: "bg-card rounded-xl p-12 text-center border border-border",
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-5xl mb-3", children: "✅" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-muted-foreground font-medium", children: "কোনো অপেক্ষমাণ অনুরোধ নেই" })
+        ]
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "space-y-4", children: pending.map((m2, i2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        "data-ocid": `admin.pending.item.${i2 + 1}`,
+        className: "bg-card rounded-xl p-5 shadow-sm border border-border",
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col sm:flex-row gap-4", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-16 h-20 rounded-lg overflow-hidden bg-muted flex-shrink-0", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "img",
+              {
+                src: m2.photoBlob.getDirectURL(),
+                alt: m2.fullName,
+                className: "w-full h-full object-cover",
+                onError: (e3) => {
+                  e3.target.src = "https://via.placeholder.com/64x80?text=📷";
+                }
+              }
+            ) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 min-w-0", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap items-start justify-between gap-2", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-bold text-[#1a2e1a] text-lg", children: m2.fullName }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm font-semibold text-[#DC143C]", children: m2.designation })
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs text-muted-foreground bg-muted px-2 py-1 rounded", children: formatDate$6(m2.registeredAt) })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 mt-2 text-sm", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-muted-foreground", children: [
+                  "📞 ",
+                  m2.phone
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-muted-foreground truncate", children: [
+                  "✉️ ",
+                  m2.email
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-muted-foreground sm:col-span-2 truncate", children: [
+                  "📍 ",
+                  m2.fullAddress
+                ] })
+              ] }),
+              m2.joinReason && /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-xs text-muted-foreground mt-2 italic line-clamp-2", children: [
+                "💬 ",
+                m2.joinReason
+              ] })
+            ] })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2 mt-4 pt-3 border-t border-border", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                "data-ocid": `admin.pending.approve_button.${i2 + 1}`,
+                onClick: () => {
+                  setApproveModal(m2);
+                  setAdminSignature("");
+                },
+                className: "flex-1 bg-[#006A4E] hover:bg-green-800 text-white py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-1.5 transition-colors",
+                children: "✓ অনুমোদন করুন"
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                "data-ocid": `admin.pending.reject_button.${i2 + 1}`,
+                onClick: () => setRejectModal({ id: m2.id, name: m2.fullName }),
+                className: "flex-1 bg-[#DC143C] hover:bg-red-700 text-white py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-1.5 transition-colors",
+                children: "✗ প্রত্যাখ্যান"
+              }
+            )
+          ] })
+        ]
+      },
+      String(m2.id)
+    )) }),
+    approveModal && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 overflow-y-auto", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        "data-ocid": "admin.approve.dialog",
+        className: "bg-card rounded-2xl w-full max-w-lg shadow-2xl border border-border my-4",
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between p-5 border-b border-border", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "font-bold text-[#1a2e1a] text-lg", children: "সদস্য অনুমোদন করুন" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                onClick: () => setApproveModal(null),
+                className: "w-8 h-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors",
+                children: /* @__PURE__ */ jsxRuntimeExports.jsx(X$1, { className: "w-4 h-4" })
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "p-5 space-y-3", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-3 p-3 bg-muted/50 rounded-lg", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "img",
+                {
+                  src: approveModal.photoBlob.getDirectURL(),
+                  alt: approveModal.fullName,
+                  className: "w-16 h-20 rounded-lg object-cover flex-shrink-0",
+                  onError: (e3) => {
+                    e3.target.src = "https://via.placeholder.com/64x80?text=📷";
+                  }
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-sm space-y-1", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "নাম:" }),
+                  " ",
+                  approveModal.fullName
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "পদবী:" }),
+                  " ",
+                  approveModal.designation
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "ফোন:" }),
+                  " ",
+                  approveModal.phone
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "truncate", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "ইমেইল:" }),
+                  " ",
+                  approveModal.email
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "line-clamp-2", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "ঠিকানা:" }),
+                  " ",
+                  approveModal.fullAddress
+                ] })
+              ] })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-1.5", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "label",
+                {
+                  htmlFor: "adminSignature",
+                  className: "text-sm font-semibold text-[#1a2e1a]",
+                  children: "অ্যাডমিন সিগনেচার (ঐচ্ছিক)"
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "input",
+                {
+                  id: "adminSignature",
+                  "data-ocid": "admin.approve.signature_input",
+                  type: "text",
+                  value: adminSignature,
+                  onChange: (e3) => setAdminSignature(e3.target.value),
+                  placeholder: "যেমন: মো. রফিকুল ইসলাম, সভাপতি",
+                  className: "w-full border border-input rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#006A4E] outline-none"
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground", children: "এই সিগনেচার সদস্যের সার্টিফিকেটে প্রদর্শিত হবে" })
+            ] })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "p-5 border-t border-border flex gap-3", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "button",
+              {
+                type: "button",
+                "data-ocid": "admin.approve.confirm_button",
+                disabled: approve.isPending,
+                onClick: () => approve.mutate({
+                  id: approveModal.id,
+                  sig: adminSignature
+                }),
+                className: "flex-1 bg-[#006A4E] hover:bg-green-800 text-white py-2.5 rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-60 transition-colors",
+                children: [
+                  approve.isPending && /* @__PURE__ */ jsxRuntimeExports.jsx(Spinner, { small: true }),
+                  "✓ অনুমোদন নিশ্চিত করুন"
+                ]
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                "data-ocid": "admin.approve.cancel_button",
+                onClick: () => setApproveModal(null),
+                className: "flex-1 border border-border py-2.5 rounded-lg font-semibold hover:bg-muted transition-colors",
+                children: "বাতিল"
+              }
+            )
+          ] })
+        ]
+      }
+    ) }),
+    rejectModal && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        "data-ocid": "admin.reject.dialog",
+        className: "bg-card rounded-xl p-6 w-full max-w-md shadow-2xl border border-border",
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("h3", { className: "font-bold text-[#1a2e1a] mb-3", children: [
+            rejectModal.name,
+            " — প্রত্যাখ্যানের কারণ"
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "textarea",
+            {
+              "data-ocid": "admin.reject.textarea",
+              className: "w-full border border-input rounded-lg p-3 text-sm min-h-[100px] resize-none focus:ring-2 focus:ring-[#DC143C] outline-none",
+              placeholder: "প্রত্যাখ্যানের কারণ লিখুন...",
+              value: rejectReason,
+              onChange: (e3) => setRejectReason(e3.target.value)
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2 mt-4", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "button",
+              {
+                type: "button",
+                "data-ocid": "admin.reject.confirm_button",
+                disabled: !rejectReason.trim() || reject.isPending,
+                onClick: () => reject.mutate({ id: rejectModal.id, reason: rejectReason }),
+                className: "flex-1 bg-[#DC143C] hover:bg-red-700 text-white py-2.5 rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-60",
+                children: [
+                  reject.isPending && /* @__PURE__ */ jsxRuntimeExports.jsx(Spinner, { small: true }),
+                  "নিশ্চিত করুন"
+                ]
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                "data-ocid": "admin.reject.cancel_button",
+                onClick: () => {
+                  setRejectModal(null);
+                  setRejectReason("");
+                },
+                className: "flex-1 border border-border py-2.5 rounded-lg font-semibold hover:bg-muted",
+                children: "বাতিল"
+              }
+            )
+          ] })
+        ]
+      }
+    ) })
+  ] });
+}
+const DEFAULT_SETTINGS = {
+  siteName: "২নং কপিলমুনি ইউনিয়ন ছাত্রদল",
+  centerName: "২নং কপিলমুনি ইউনিয়ন",
+  upazilaName: "পাইকগাছা উপজেলা",
+  unionName: "কপিলমুনি ইউনিয়ন",
+  adminSignature: ""
+};
+function SiteSettingsSection({
+  show
+}) {
+  const { actor } = useBackend();
+  const qc = useQueryClient();
+  const [form, setForm] = reactExports.useState(DEFAULT_SETTINGS);
+  const { data: settings, isLoading } = useQuery({
+    queryKey: ["siteSettings"],
+    queryFn: async () => {
+      if (!actor) return DEFAULT_SETTINGS;
+      return actor.getSiteSettings();
+    },
+    enabled: !!actor
+  });
+  reactExports.useEffect(() => {
+    if (settings) setForm(settings);
+  }, [settings]);
+  const updateSettings = useMutation({
+    mutationFn: async (newSettings) => {
+      if (!actor) throw new Error("no actor");
+      return actor.updateSiteSettings(newSettings);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["siteSettings"] });
+      show("সাইট সেটিংস সফলভাবে সংরক্ষণ হয়েছে");
+    },
+    onError: () => show("সংরক্ষণ ব্যর্থ হয়েছে", "error")
+  });
+  function handleChange(field, value) {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  }
+  const fields = [
+    {
+      key: "siteName",
+      label: "সাইটের নাম",
+      description: "ওয়েবসাইটের শিরোনাম যা সব জায়গায় দেখা যাবে",
+      placeholder: "যেমন: ২নং কপিলমুনি ইউনিয়ন ছাত্রদল"
+    },
+    {
+      key: "centerName",
+      label: "কেন্দ্রের নাম",
+      description: "সংগঠনের কেন্দ্রীয় নাম",
+      placeholder: "যেমন: কেন্দ্রীয় কমিটি"
+    },
+    {
+      key: "upazilaName",
+      label: "উপজেলার নাম",
+      description: "সংগঠন যে উপজেলায় অবস্থিত",
+      placeholder: "যেমন: পাইকগাছা উপজেলা"
+    },
+    {
+      key: "unionName",
+      label: "ইউনিয়নের নাম",
+      description: "সংগঠন যে ইউনিয়নে অবস্থিত",
+      placeholder: "যেমন: কপিলমুনি ইউনিয়ন"
+    },
+    {
+      key: "adminSignature",
+      label: "অ্যাডমিন সিগনেচার",
+      description: "অনুমোদিত সদস্যের সার্টিফিকেটে প্রদর্শিত সিগনেচার",
+      placeholder: "যেমন: মো. রফিকুল ইসলাম, সভাপতি"
     }
-  };
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "data-ocid": "admin.gallery_section", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-xl font-display font-bold text-[#1a2e1a] mb-5", children: "গ্যালারি ব্যবস্থাপনা" }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-card rounded-xl p-5 shadow border border-border mb-6", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "font-semibold mb-3 text-[#1a2e1a]", children: "নতুন ছবি যোগ করুন" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-3", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "input",
-          {
-            "data-ocid": "admin.gallery.uploader_input",
-            type: "text",
-            placeholder: "আপলোডকারীর নাম",
-            value: uploaderName,
-            onChange: (e3) => setUploaderName(e3.target.value),
-            className: "w-full border border-input rounded-lg px-3 py-2 text-sm"
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "input",
-          {
-            "data-ocid": "admin.gallery.caption_input",
-            type: "text",
-            placeholder: "ক্যাপশন",
-            value: caption,
-            onChange: (e3) => setCaption(e3.target.value),
-            className: "w-full border border-input rounded-lg px-3 py-2 text-sm"
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "input",
-          {
-            "data-ocid": "admin.gallery.upload_button",
-            type: "file",
-            accept: "image/*",
-            onChange: (e3) => {
-              var _a3;
-              return setFile(((_a3 = e3.target.files) == null ? void 0 : _a3[0]) ?? null);
-            },
-            className: "block text-sm text-muted-foreground file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-[#1a2e1a] file:text-white hover:file:bg-green-900"
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+  ];
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "data-ocid": "admin.site_settings_section", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      SectionHeader,
+      {
+        icon: "⚙️",
+        title: "সাইট সেটিংস",
+        description: "ওয়েবসাইটের নাম, কেন্দ্র, উপজেলা এবং ইউনিয়নের নাম পরিবর্তন করুন"
+      }
+    ),
+    isLoading ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex justify-center py-12", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Spinner, {}) }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "max-w-2xl", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-card rounded-xl border border-border p-6 shadow-sm", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "space-y-5", children: fields.map(({ key, label, description, placeholder }) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-1.5", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "label",
+            {
+              htmlFor: key,
+              className: "block text-sm font-semibold text-[#1a2e1a]",
+              children: label
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground", children: description }),
+          key === "adminSignature" ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "textarea",
+            {
+              id: key,
+              "data-ocid": `admin.settings.${key}_input`,
+              value: form[key],
+              onChange: (e3) => handleChange(key, e3.target.value),
+              placeholder,
+              rows: 3,
+              className: "w-full border border-input rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#006A4E] resize-none"
+            }
+          ) : /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              id: key,
+              "data-ocid": `admin.settings.${key}_input`,
+              type: "text",
+              value: form[key],
+              onChange: (e3) => handleChange(key, e3.target.value),
+              placeholder,
+              className: "w-full border border-input rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#006A4E]"
+            }
+          )
+        ] }, key)) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-6 pt-5 border-t border-border", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
           "button",
           {
             type: "button",
-            "data-ocid": "admin.gallery.submit_button",
-            disabled: !file || !caption.trim() || !uploaderName.trim() || uploading,
-            onClick: handleUpload,
-            className: "bg-[#006A4E] hover:bg-green-800 text-white px-5 py-2 rounded font-semibold text-sm flex items-center gap-2 disabled:opacity-60",
+            "data-ocid": "admin.settings.save_button",
+            disabled: updateSettings.isPending,
+            onClick: () => updateSettings.mutate(form),
+            className: "bg-[#006A4E] hover:bg-green-800 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 disabled:opacity-60 transition-colors shadow-sm",
             children: [
-              uploading ? /* @__PURE__ */ jsxRuntimeExports.jsx(Spinner, {}) : null,
-              " ছবি যোগ করুন"
+              updateSettings.isPending ? /* @__PURE__ */ jsxRuntimeExports.jsx(Spinner, {}) : /* @__PURE__ */ jsxRuntimeExports.jsx(Save, { className: "w-4 h-4" }),
+              "সেটিংস সংরক্ষণ করুন"
             ]
           }
-        )
-      ] })
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4", children: [
-      photos.map((p2, i2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
-        "div",
-        {
-          "data-ocid": `admin.gallery.item.${i2 + 1}`,
-          className: "bg-card rounded-xl overflow-hidden shadow border border-border group",
-          children: [
+        ) })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-4 p-4 bg-blue-50 rounded-xl border border-blue-200", children: /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-blue-700 font-medium", children: "💡 সেটিংস পরিবর্তন করলে সম্পূর্ণ ওয়েবসাইটে প্রভাব পড়বে। সিগনেচার শুধুমাত্র ভবিষ্যতের অনুমোদনে ব্যবহৃত হবে।" }) })
+    ] })
+  ] });
+}
+const NAV_ITEMS = [
+  { id: 0, label: "ড্যাশবোর্ড", icon: LayoutDashboard, cat: "overview" },
+  {
+    id: 1,
+    label: "নিবন্ধন অনুরোধ",
+    icon: UserCheck,
+    cat: "members",
+    badge: true
+  },
+  { id: 2, label: "সদস্য ব্যবস্থাপনা", icon: Users, cat: "members" },
+  { id: 3, label: "পদবী ও র‍্যাংক", icon: Shield, cat: "members" },
+  { id: 4, label: "সাইট সেটিংস", icon: Settings, cat: "settings" },
+  { id: 5, label: "গ্যালারি", icon: GalleryHorizontalEnd, cat: "content" },
+  { id: 6, label: "নোটিশ বোর্ড", icon: Bell, cat: "content" },
+  { id: 7, label: "চ্যাট মডারেশন", icon: MessageCircle, cat: "content" },
+  { id: 8, label: "অ্যালামনাই ও কৃতিত্ব", icon: Award, cat: "content" }
+];
+const CAT_LABELS = {
+  overview: "সামগ্রিক দৃশ্য",
+  members: "সদস্য বিভাগ",
+  settings: "সেটিংস",
+  content: "কন্টেন্ট বিভাগ"
+};
+function AdminPage() {
+  var _a3, _b3;
+  const navigate = useNavigate();
+  const { isAdmin, clearAdminSession } = useAuth();
+  const { actor } = useBackend();
+  const { toast, show } = useToast();
+  const [activeSection, setActiveSection] = reactExports.useState(0);
+  const [sidebarOpen, setSidebarOpen] = reactExports.useState(false);
+  const { data: stats } = useQuery({
+    queryKey: ["memberStats"],
+    queryFn: async () => {
+      if (!actor)
+        return {
+          pendingCount: 0n,
+          total: 0n,
+          joinedYesterday: 0n,
+          joinedToday: 0n
+        };
+      return actor.getMemberStats();
+    },
+    enabled: !!actor,
+    refetchInterval: 15e3
+  });
+  const pendingCount = stats ? Number(stats.pendingCount) : 0;
+  reactExports.useEffect(() => {
+    if (!isAdmin) void navigate({ to: "/admin/login" });
+  }, [isAdmin, navigate]);
+  if (!isAdmin) return null;
+  const handleLogout = () => {
+    clearAdminSession();
+    void navigate({ to: "/" });
+  };
+  const handleNav = (id) => {
+    setActiveSection(id);
+    setSidebarOpen(false);
+  };
+  const categories = Array.from(new Set(NAV_ITEMS.map((n2) => n2.cat)));
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-h-screen flex", style: { background: "#f0f4f0" }, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Toast, { toast }),
+    sidebarOpen && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        role: "presentation",
+        className: "fixed inset-0 bg-black/50 z-40 lg:hidden",
+        onClick: () => setSidebarOpen(false),
+        onKeyDown: () => setSidebarOpen(false)
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "aside",
+      {
+        className: `fixed inset-y-0 left-0 z-50 flex flex-col w-64 transition-transform duration-300 lg:translate-x-0 lg:static lg:z-auto ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`,
+        style: { background: "#0e2415", minHeight: "100vh" },
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "div",
+            {
+              className: "flex items-center gap-3 px-4 py-4 border-b",
+              style: { borderColor: "rgba(255,255,255,0.1)" },
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(ChhatraLogo, { size: 38 }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-white font-bold text-xs leading-tight font-display truncate", children: "২নং কপিলমুনি ইউনিয়ন" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-green-400 text-xs", children: "ছাত্রদল — প্রশাসন" })
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "button",
+                  {
+                    type: "button",
+                    className: "ml-auto text-white/50 hover:text-white lg:hidden",
+                    onClick: () => setSidebarOpen(false),
+                    children: /* @__PURE__ */ jsxRuntimeExports.jsx(X$1, { className: "w-5 h-5" })
+                  }
+                )
+              ]
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("nav", { className: "flex-1 overflow-y-auto py-3 px-2", children: categories.map((cat) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "img",
+              "p",
               {
-                src: p2.photoBlob.getDirectURL(),
-                alt: p2.caption,
-                className: "w-full h-36 object-cover"
+                className: "text-xs font-semibold uppercase tracking-wider px-3 mb-1",
+                style: { color: "rgba(255,255,255,0.35)" },
+                children: CAT_LABELS[cat]
               }
             ),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "p-2", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs font-semibold truncate", children: p2.caption }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground", children: p2.uploaderName }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
+            NAV_ITEMS.filter((n2) => n2.cat === cat).map((item) => {
+              const Icon2 = item.icon;
+              const isActive = activeSection === item.id;
+              return /* @__PURE__ */ jsxRuntimeExports.jsxs(
                 "button",
                 {
                   type: "button",
-                  "data-ocid": `admin.gallery.delete_button.${i2 + 1}`,
-                  onClick: () => deletePhoto.mutate(p2.id),
-                  className: "mt-1 text-[#DC143C] text-xs font-semibold hover:text-red-700",
-                  children: "মুছুন"
+                  "data-ocid": `admin.nav.${item.id}`,
+                  onClick: () => handleNav(item.id),
+                  className: `w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all mb-0.5 ${isActive ? "text-white" : "text-green-300/70 hover:text-white hover:bg-white/5"}`,
+                  style: isActive ? { background: "#DC143C" } : {},
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(Icon2, { className: "w-4 h-4 flex-shrink-0" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex-1 text-left truncate", children: item.label }),
+                    item.badge && pendingCount > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "w-5 h-5 bg-yellow-400 text-yellow-900 text-xs font-bold rounded-full flex items-center justify-center flex-shrink-0", children: pendingCount > 9 ? "9+" : pendingCount })
+                  ]
+                },
+                item.id
+              );
+            })
+          ] }, cat)) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "div",
+            {
+              className: "p-3 border-t",
+              style: { borderColor: "rgba(255,255,255,0.1)" },
+              children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "button",
+                {
+                  type: "button",
+                  "data-ocid": "admin.logout_button",
+                  onClick: handleLogout,
+                  className: "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors text-red-400 hover:bg-red-500/10 hover:text-red-300",
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(LogOut, { className: "w-4 h-4" }),
+                    "লগ আউট"
+                  ]
                 }
               )
-            ] })
-          ]
-        },
-        String(p2.id)
-      )),
-      photos.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "div",
+            }
+          )
+        ]
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 flex flex-col min-w-0", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "header",
         {
-          "data-ocid": "admin.gallery.empty_state",
-          className: "col-span-4 bg-card rounded-xl p-8 text-center text-muted-foreground",
-          children: "কোনো ছবি নেই"
-        }
-      )
-    ] })
-  ] });
-}
-function ChatTab({ actor, qc, show }) {
-  const { data: messages2 = [] } = useQuery({
-    queryKey: ["chatMessages"],
-    queryFn: async () => {
-      if (!actor) return [];
-      return actor.getChatMessages(50n);
-    },
-    enabled: !!actor,
-    refetchInterval: 3e3
-  });
-  const deleteMsg = useMutation({
-    mutationFn: async (id2) => {
-      if (!actor) throw new Error("no actor");
-      return actor.deleteChatMessage(id2);
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["chatMessages"] });
-      show("বার্তা মুছে ফেলা হয়েছে");
-    },
-    onError: () => show("মুছে ফেলা ব্যর্থ হয়েছে", "error")
-  });
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "data-ocid": "admin.chat_section", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("h2", { className: "text-xl font-display font-bold text-[#1a2e1a] mb-5", children: [
-      "চ্যাট বার্তা (",
-      messages2.length,
-      ")"
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "bg-card rounded-xl shadow border border-border overflow-x-auto", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("table", { className: "w-full text-sm min-w-[540px]", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("thead", { className: "bg-[#1a2e1a] text-white", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("tr", { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("th", { className: "px-4 py-3 text-left", children: "প্রেরক" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("th", { className: "px-4 py-3 text-left", children: "বার্তা" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("th", { className: "px-4 py-3 text-left", children: "সময়" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("th", { className: "px-4 py-3 text-right", children: "কার্যক্রম" })
-      ] }) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("tbody", { children: messages2.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("tr", { children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "td",
-        {
-          colSpan: 4,
-          className: "px-4 py-8 text-center text-muted-foreground",
-          "data-ocid": "admin.chat.empty_state",
-          children: "কোনো বার্তা নেই"
-        }
-      ) }) : messages2.map((msg, i2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
-        "tr",
-        {
-          "data-ocid": `admin.chat.item.${i2 + 1}`,
-          className: "border-t border-border hover:bg-muted/30",
+          className: "lg:hidden flex items-center justify-between px-4 py-3 border-b shadow-sm",
+          style: {
+            background: "#0e2415",
+            borderColor: "rgba(255,255,255,0.1)"
+          },
           children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-4 py-3 font-semibold", children: msg.senderName }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-4 py-3 max-w-[300px] truncate", children: msg.text }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-4 py-3 text-muted-foreground whitespace-nowrap", children: formatDate$5(msg.timestamp) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-4 py-3 text-right", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "button",
-              {
-                type: "button",
-                "data-ocid": `admin.chat.delete_button.${i2 + 1}`,
-                onClick: () => deleteMsg.mutate(msg.id),
-                disabled: deleteMsg.isPending,
-                className: "text-[#DC143C] hover:text-red-700 text-xs font-semibold disabled:opacity-60",
-                children: "মুছুন"
-              }
-            ) })
-          ]
-        },
-        String(msg.id)
-      )) })
-    ] }) })
-  ] });
-}
-function DesignationTab({ actor, qc, show }) {
-  const [title, setTitle] = reactExports.useState("");
-  const [rank, setRank] = reactExports.useState("");
-  const { data: designations = [] } = useQuery({
-    queryKey: ["designations"],
-    queryFn: async () => {
-      if (!actor) return [];
-      return actor.listDesignations();
-    },
-    enabled: !!actor
-  });
-  const addDesignation = useMutation({
-    mutationFn: async ({
-      title: t3,
-      rank: r2
-    }) => {
-      if (!actor) throw new Error("no actor");
-      return actor.addDesignation(t3, r2);
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["designations"] });
-      show("পদবী যোগ করা হয়েছে");
-      setTitle("");
-      setRank("");
-    },
-    onError: () => show("পদবী যোগ ব্যর্থ হয়েছে", "error")
-  });
-  const deleteDesignation = useMutation({
-    mutationFn: async (id2) => {
-      if (!actor) throw new Error("no actor");
-      return actor.deleteDesignation(id2);
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["designations"] });
-      show("পদবী মুছে ফেলা হয়েছে");
-    },
-    onError: () => show("মুছে ফেলা ব্যর্থ হয়েছে", "error")
-  });
-  const sorted = [...designations].sort(
-    (a2, b2) => Number(a2.rank) - Number(b2.rank)
-  );
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "data-ocid": "admin.designations_section", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-xl font-display font-bold text-[#1a2e1a] mb-5", children: "পদবী ব্যবস্থাপনা" }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-card rounded-xl p-5 shadow border border-border mb-6", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "font-semibold mb-3 text-[#1a2e1a]", children: "নতুন পদবী যোগ করুন" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col sm:flex-row gap-3", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "input",
-          {
-            "data-ocid": "admin.designations.title_input",
-            type: "text",
-            placeholder: "পদবীর নাম (যেমন: সভাপতি)",
-            value: title,
-            onChange: (e3) => setTitle(e3.target.value),
-            className: "flex-1 border border-input rounded-lg px-3 py-2 text-sm"
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "input",
-          {
-            "data-ocid": "admin.designations.rank_input",
-            type: "number",
-            placeholder: "র‌্যাংক (১ = সর্বোচ্চ)",
-            value: rank,
-            onChange: (e3) => setRank(e3.target.value),
-            className: "w-40 border border-input rounded-lg px-3 py-2 text-sm"
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(
-          "button",
-          {
-            type: "button",
-            "data-ocid": "admin.designations.submit_button",
-            disabled: !title.trim() || !rank || addDesignation.isPending,
-            onClick: () => addDesignation.mutate({ title, rank: BigInt(rank) }),
-            className: "bg-[#006A4E] hover:bg-green-800 text-white px-5 py-2 rounded font-semibold text-sm flex items-center gap-2 disabled:opacity-60",
-            children: [
-              addDesignation.isPending ? /* @__PURE__ */ jsxRuntimeExports.jsx(Spinner, {}) : null,
-              " যোগ করুন"
-            ]
-          }
-        )
-      ] })
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
-      sorted.map((d2, i2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
-        "div",
-        {
-          "data-ocid": `admin.designations.item.${i2 + 1}`,
-          className: "bg-card rounded-xl px-4 py-3 shadow border border-border flex items-center justify-between",
-          children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-bold text-[#1a2e1a]", children: d2.title }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "ml-3 text-xs text-muted-foreground", children: [
-                "র‌্যাংক: ",
-                String(d2.rank)
-              ] })
-            ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(
               "button",
               {
                 type: "button",
-                "data-ocid": `admin.designations.delete_button.${i2 + 1}`,
-                onClick: () => deleteDesignation.mutate(d2.id),
-                disabled: deleteDesignation.isPending,
-                className: "text-[#DC143C] hover:text-red-700 text-sm font-semibold disabled:opacity-60",
-                children: "মুছুন"
+                onClick: () => setSidebarOpen(true),
+                className: "text-white p-1",
+                "aria-label": "মেনু খুলুন",
+                children: /* @__PURE__ */ jsxRuntimeExports.jsx(AlignJustify, { className: "w-5 h-5" })
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-white font-bold text-sm", children: (_a3 = NAV_ITEMS.find((n2) => n2.id === activeSection)) == null ? void 0 : _a3.label }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                "data-ocid": "admin.logout_button_mobile",
+                onClick: handleLogout,
+                className: "text-red-400 text-xs font-semibold",
+                children: "লগআউট"
               }
             )
           ]
-        },
-        String(d2.id)
-      )),
-      sorted.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "div",
-        {
-          "data-ocid": "admin.designations.empty_state",
-          className: "bg-card rounded-xl p-8 text-center text-muted-foreground",
-          children: "কোনো পদবী নেই"
-        }
-      )
-    ] })
-  ] });
-}
-function AlumniAchievementsTab({ actor, qc, show }) {
-  const [subTab, setSubTab] = reactExports.useState("alumni");
-  const [alumniForm, setAlumniForm] = reactExports.useState({ name: "", designation: "", yearsActive: "", currentStatus: "" });
-  const [achForm, setAchForm] = reactExports.useState({ memberName: "", title: "", description: "" });
-  const { data: alumniList = [] } = useQuery({
-    queryKey: ["alumni"],
-    queryFn: async () => {
-      if (!actor) return [];
-      return actor.listAlumni();
-    },
-    enabled: !!actor
-  });
-  const { data: achievements = [] } = useQuery({
-    queryKey: ["achievements"],
-    queryFn: async () => {
-      if (!actor) return [];
-      return actor.listAchievements();
-    },
-    enabled: !!actor
-  });
-  const addAlumni = useMutation({
-    mutationFn: async (payload) => {
-      if (!actor) throw new Error("no actor");
-      return actor.addAlumni(payload);
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["alumni"] });
-      show("প্রাক্তন সদস্য যোগ হয়েছে");
-      setAlumniForm({
-        name: "",
-        designation: "",
-        yearsActive: "",
-        currentStatus: ""
-      });
-    },
-    onError: () => show("যোগ ব্যর্থ হয়েছে", "error")
-  });
-  const deleteAlumni = useMutation({
-    mutationFn: async (id2) => {
-      if (!actor) throw new Error("no actor");
-      return actor.deleteAlumni(id2);
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["alumni"] });
-      show("মুছে ফেলা হয়েছে");
-    },
-    onError: () => show("মুছে ফেলা ব্যর্থ হয়েছে", "error")
-  });
-  const addAchievement = useMutation({
-    mutationFn: async (payload) => {
-      if (!actor) throw new Error("no actor");
-      return actor.addAchievement(payload);
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["achievements"] });
-      show("সাফল্য যোগ হয়েছে");
-      setAchForm({ memberName: "", title: "", description: "" });
-    },
-    onError: () => show("যোগ ব্যর্থ হয়েছে", "error")
-  });
-  const deleteAchievement = useMutation({
-    mutationFn: async (id2) => {
-      if (!actor) throw new Error("no actor");
-      return actor.deleteAchievement(id2);
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["achievements"] });
-      show("মুছে ফেলা হয়েছে");
-    },
-    onError: () => show("মুছে ফেলা ব্যর্থ হয়েছে", "error")
-  });
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "data-ocid": "admin.alumni_achievements_section", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-xl font-display font-bold text-[#1a2e1a] mb-5", children: "প্রাক্তন ও সাফল্য" }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2 mb-6 border-b border-border", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "button",
-        {
-          type: "button",
-          "data-ocid": "admin.alumni_tab",
-          onClick: () => setSubTab("alumni"),
-          className: `pb-2 px-1 font-semibold text-sm border-b-2 transition-colors ${subTab === "alumni" ? "border-[#DC143C] text-[#DC143C]" : "border-transparent text-muted-foreground hover:text-foreground"}`,
-          children: "প্রাক্তন সদস্য"
         }
       ),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "button",
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "div",
         {
-          type: "button",
-          "data-ocid": "admin.achievements_tab",
-          onClick: () => setSubTab("achievements"),
-          className: `pb-2 px-1 font-semibold text-sm border-b-2 transition-colors ${subTab === "achievements" ? "border-[#DC143C] text-[#DC143C]" : "border-transparent text-muted-foreground hover:text-foreground"}`,
-          children: "সাফল্য"
+          className: "hidden lg:flex items-center justify-between px-6 py-3 border-b bg-card shadow-sm",
+          style: { borderColor: "#e2e8e2" },
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "font-display font-bold text-[#1a2e1a] text-lg", children: (_b3 = NAV_ITEMS.find((n2) => n2.id === activeSection)) == null ? void 0 : _b3.label }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground", children: "২নং কপিলমুনি ইউনিয়ন ছাত্রদল — প্রশাসন প্যানেল" })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-4", children: [
+              pendingCount > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "button",
+                {
+                  type: "button",
+                  onClick: () => handleNav(1),
+                  className: "flex items-center gap-2 bg-yellow-50 border border-yellow-200 text-yellow-800 px-3 py-1.5 rounded-full text-xs font-semibold hover:bg-yellow-100 transition-colors",
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(Bell, { className: "w-3.5 h-3.5" }),
+                    pendingCount,
+                    " প্রার্থী অপেক্ষায়"
+                  ]
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-8 h-8 rounded-full bg-[#DC143C] flex items-center justify-center text-white text-xs font-bold", children: "প" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm font-semibold text-[#1a2e1a]", children: "প্রশাসক" })
+              ] })
+            ] })
+          ]
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("main", { className: "flex-1 overflow-y-auto p-4 lg:p-6", children: [
+        activeSection === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(DashboardSection, {}),
+        activeSection === 1 && /* @__PURE__ */ jsxRuntimeExports.jsx(RegistrationRequestsSection, { show }),
+        activeSection === 2 && /* @__PURE__ */ jsxRuntimeExports.jsx(MemberManagementSection, { show }),
+        activeSection === 3 && /* @__PURE__ */ jsxRuntimeExports.jsx(DesignationRankSection, { show }),
+        activeSection === 4 && /* @__PURE__ */ jsxRuntimeExports.jsx(SiteSettingsSection, { show }),
+        activeSection === 5 && /* @__PURE__ */ jsxRuntimeExports.jsx(GallerySection, { show }),
+        activeSection === 6 && /* @__PURE__ */ jsxRuntimeExports.jsx(NoticesSection, { show }),
+        activeSection === 7 && /* @__PURE__ */ jsxRuntimeExports.jsx(ChatModerationSection, { show }),
+        activeSection === 8 && /* @__PURE__ */ jsxRuntimeExports.jsx(AlumniAchievementsSection, { show })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "footer",
+        {
+          className: "text-center py-3 text-xs",
+          style: { color: "#9aab9a", borderTop: "1px solid #e0e8e0" },
+          children: [
+            "© ",
+            (/* @__PURE__ */ new Date()).getFullYear(),
+            " ২নং কপিলমুনি ইউনিয়ন ছাত্রদল — প্রশাসন প্যানেল"
+          ]
         }
       )
-    ] }),
-    subTab === "alumni" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-card rounded-xl p-5 shadow border border-border mb-5", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "font-semibold mb-3 text-[#1a2e1a]", children: "নতুন প্রাক্তন সদস্য যোগ করুন" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-3", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "input",
-            {
-              "data-ocid": "admin.alumni.name_input",
-              type: "text",
-              placeholder: "নাম",
-              value: alumniForm.name,
-              onChange: (e3) => setAlumniForm((f2) => ({ ...f2, name: e3.target.value })),
-              className: "border border-input rounded-lg px-3 py-2 text-sm"
-            }
-          ),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "input",
-            {
-              "data-ocid": "admin.alumni.designation_input",
-              type: "text",
-              placeholder: "পদবী",
-              value: alumniForm.designation,
-              onChange: (e3) => setAlumniForm((f2) => ({ ...f2, designation: e3.target.value })),
-              className: "border border-input rounded-lg px-3 py-2 text-sm"
-            }
-          ),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "input",
-            {
-              "data-ocid": "admin.alumni.years_input",
-              type: "text",
-              placeholder: "সক্রিয় বছর (যেমন: ২০১৫-২০১৮)",
-              value: alumniForm.yearsActive,
-              onChange: (e3) => setAlumniForm((f2) => ({ ...f2, yearsActive: e3.target.value })),
-              className: "border border-input rounded-lg px-3 py-2 text-sm"
-            }
-          ),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "input",
-            {
-              "data-ocid": "admin.alumni.status_input",
-              type: "text",
-              placeholder: "বর্তমান অবস্থান",
-              value: alumniForm.currentStatus,
-              onChange: (e3) => setAlumniForm((f2) => ({
-                ...f2,
-                currentStatus: e3.target.value
-              })),
-              className: "border border-input rounded-lg px-3 py-2 text-sm"
-            }
-          )
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(
-          "button",
-          {
-            type: "button",
-            "data-ocid": "admin.alumni.submit_button",
-            disabled: !alumniForm.name.trim() || !alumniForm.designation.trim() || addAlumni.isPending,
-            onClick: () => addAlumni.mutate({ ...alumniForm }),
-            className: "mt-3 bg-[#006A4E] hover:bg-green-800 text-white px-5 py-2 rounded font-semibold text-sm flex items-center gap-2 disabled:opacity-60",
-            children: [
-              addAlumni.isPending ? /* @__PURE__ */ jsxRuntimeExports.jsx(Spinner, {}) : null,
-              " যোগ করুন"
-            ]
-          }
-        )
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-3", children: [
-        alumniList.map((a2, i2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
-          "div",
-          {
-            "data-ocid": `admin.alumni.item.${i2 + 1}`,
-            className: "bg-card rounded-xl px-4 py-3 shadow border border-border flex items-center justify-between",
-            children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-bold text-[#1a2e1a]", children: a2.name }),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-sm text-muted-foreground", children: [
-                  a2.designation,
-                  " · ",
-                  a2.yearsActive,
-                  " · ",
-                  a2.currentStatus
-                ] })
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                "button",
-                {
-                  type: "button",
-                  "data-ocid": `admin.alumni.delete_button.${i2 + 1}`,
-                  onClick: () => deleteAlumni.mutate(a2.id),
-                  disabled: deleteAlumni.isPending,
-                  className: "text-[#DC143C] hover:text-red-700 text-sm font-semibold disabled:opacity-60",
-                  children: "মুছুন"
-                }
-              )
-            ]
-          },
-          String(a2.id)
-        )),
-        alumniList.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "div",
-          {
-            "data-ocid": "admin.alumni.empty_state",
-            className: "bg-card rounded-xl p-8 text-center text-muted-foreground",
-            children: "কোনো প্রাক্তন সদস্য নেই"
-          }
-        )
-      ] })
-    ] }),
-    subTab === "achievements" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-card rounded-xl p-5 shadow border border-border mb-5", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "font-semibold mb-3 text-[#1a2e1a]", children: "নতুন সাফল্য যোগ করুন" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-3", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "input",
-            {
-              "data-ocid": "admin.achievements.member_input",
-              type: "text",
-              placeholder: "সদস্যের নাম",
-              value: achForm.memberName,
-              onChange: (e3) => setAchForm((f2) => ({ ...f2, memberName: e3.target.value })),
-              className: "border border-input rounded-lg px-3 py-2 text-sm"
-            }
-          ),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "input",
-            {
-              "data-ocid": "admin.achievements.title_input",
-              type: "text",
-              placeholder: "সাফল্যের শিরোনাম",
-              value: achForm.title,
-              onChange: (e3) => setAchForm((f2) => ({ ...f2, title: e3.target.value })),
-              className: "border border-input rounded-lg px-3 py-2 text-sm"
-            }
-          )
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "textarea",
-          {
-            "data-ocid": "admin.achievements.desc_textarea",
-            placeholder: "বিস্তারিত বিবরণ",
-            value: achForm.description,
-            onChange: (e3) => setAchForm((f2) => ({ ...f2, description: e3.target.value })),
-            className: "mt-3 w-full border border-input rounded-lg px-3 py-2 text-sm min-h-[80px] resize-none"
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(
-          "button",
-          {
-            type: "button",
-            "data-ocid": "admin.achievements.submit_button",
-            disabled: !achForm.memberName.trim() || !achForm.title.trim() || addAchievement.isPending,
-            onClick: () => addAchievement.mutate({ ...achForm }),
-            className: "mt-3 bg-[#006A4E] hover:bg-green-800 text-white px-5 py-2 rounded font-semibold text-sm flex items-center gap-2 disabled:opacity-60",
-            children: [
-              addAchievement.isPending ? /* @__PURE__ */ jsxRuntimeExports.jsx(Spinner, {}) : null,
-              " যোগ করুন"
-            ]
-          }
-        )
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-3", children: [
-        achievements.map((a2, i2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
-          "div",
-          {
-            "data-ocid": `admin.achievements.item.${i2 + 1}`,
-            className: "bg-card rounded-xl px-4 py-3 shadow border border-border flex items-center justify-between",
-            children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 min-w-0", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-bold text-[#1a2e1a]", children: a2.title }),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-sm text-muted-foreground", children: [
-                  a2.memberName,
-                  " · ",
-                  formatDate$5(a2.date)
-                ] }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm mt-0.5 line-clamp-1", children: a2.description })
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                "button",
-                {
-                  type: "button",
-                  "data-ocid": `admin.achievements.delete_button.${i2 + 1}`,
-                  onClick: () => deleteAchievement.mutate(a2.id),
-                  disabled: deleteAchievement.isPending,
-                  className: "ml-3 text-[#DC143C] hover:text-red-700 text-sm font-semibold disabled:opacity-60 shrink-0",
-                  children: "মুছুন"
-                }
-              )
-            ]
-          },
-          String(a2.id)
-        )),
-        achievements.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "div",
-          {
-            "data-ocid": "admin.achievements.empty_state",
-            className: "bg-card rounded-xl p-8 text-center text-muted-foreground",
-            children: "কোনো সাফল্য নেই"
-          }
-        )
-      ] })
     ] })
   ] });
 }
 function AdminLoginPage() {
-  const { actor } = useBackend();
-  const { setAdminSession } = useAuth();
+  const { setAdminSession, isAdmin } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = reactExports.useState("");
   const [password, setPassword] = reactExports.useState("");
+  const [showPassword, setShowPassword] = reactExports.useState(false);
   const [errorMsg, setErrorMsg] = reactExports.useState(null);
-  const loginMutation = useMutation({
-    mutationFn: async ({
-      email: email2,
-      password: password2
-    }) => {
-      if (!actor) throw new Error("সার্ভারের সাথে সংযোগ নেই");
-      const result = await actor.adminLogin(email2, password2);
-      return result;
-    },
-    onSuccess: (token) => {
-      if (token) {
-        setAdminSession(token);
-        navigate({ to: "/admin" });
-      } else {
-        setErrorMsg("ইমেইল বা পাসওয়ার্ড ভুল। আবার চেষ্টা করুন।");
-      }
-    },
-    onError: (err) => {
-      setErrorMsg(err.message || "লগইন করতে ব্যর্থ হয়েছে। আবার চেষ্টা করুন।");
+  const [successMsg, setSuccessMsg] = reactExports.useState(null);
+  reactExports.useEffect(() => {
+    if (isAdmin) {
+      void navigate({ to: "/admin" });
     }
-  });
+  }, [isAdmin, navigate]);
   function handleSubmit(e3) {
     e3.preventDefault();
     setErrorMsg(null);
-    loginMutation.mutate({ email, password });
+    const trimmed = password.trim();
+    if (!trimmed) {
+      setErrorMsg("পাসওয়ার্ড দিন");
+      return;
+    }
+    if (trimmed === "MUNNA12061") {
+      setAdminSession("admin-local-token");
+      setSuccessMsg("লগইন সফল! প্রশাসন প্যানেলে প্রবেশ করছেন...");
+      setTimeout(() => {
+        void navigate({ to: "/admin" });
+      }, 600);
+    } else {
+      setErrorMsg("পাসওয়ার্ড ভুল। আবার চেষ্টা করুন।");
+    }
   }
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
     {
-      className: "min-h-screen flex items-center justify-center p-4",
+      className: "min-h-screen flex items-center justify-center p-4 relative overflow-hidden",
       style: {
-        background: "linear-gradient(135deg, #0a1a0a 0%, #1a3a1a 50%, #2a0a0a 100%)"
+        background: "linear-gradient(135deg, #0a1a0a 0%, #0e2e1e 40%, #1a0a0a 100%)"
       },
-      children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-full max-w-md", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-card rounded-2xl shadow-2xl p-8 border border-border", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center gap-3 mb-8", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(ChhatraLogo, { size: 80 }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "font-display text-xl font-bold text-foreground text-center leading-tight", children: "২নং কপিলমুনি ইউনিয়ন ছাত্রদল" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-muted-foreground font-semibold tracking-wide uppercase", children: "প্রশাসন প্যানেল" }),
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "absolute inset-0 overflow-hidden pointer-events-none", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             "div",
             {
-              className: "h-0.5 w-24 rounded-full",
-              style: { background: "linear-gradient(90deg, #DC143C, #006A4E)" }
-            }
-          )
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("form", { onSubmit: handleSubmit, className: "space-y-4", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-1.5", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "label",
-              {
-                className: "text-sm font-medium text-foreground",
-                htmlFor: "admin-email",
-                children: "ইমেইল ঠিকানা"
-              }
-            ),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "input",
-              {
-                id: "admin-email",
-                type: "email",
-                autoComplete: "email",
-                required: true,
-                value: email,
-                onChange: (e3) => setEmail(e3.target.value),
-                placeholder: "admin@example.com",
-                className: "w-full px-4 py-2.5 rounded-lg border border-input bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-colors",
-                "data-ocid": "admin_login.email_input"
-              }
-            )
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-1.5", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "label",
-              {
-                className: "text-sm font-medium text-foreground",
-                htmlFor: "admin-password",
-                children: "পাসওয়ার্ড"
-              }
-            ),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "input",
-              {
-                id: "admin-password",
-                type: "password",
-                autoComplete: "current-password",
-                required: true,
-                value: password,
-                onChange: (e3) => setPassword(e3.target.value),
-                placeholder: "••••••••",
-                className: "w-full px-4 py-2.5 rounded-lg border border-input bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-colors",
-                "data-ocid": "admin_login.password_input"
-              }
-            )
-          ] }),
-          errorMsg && /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "div",
-            {
-              className: "px-4 py-3 rounded-lg text-sm font-medium",
+              className: "absolute -top-32 -left-32 w-96 h-96 rounded-full opacity-10",
               style: {
-                background: "#DC143C22",
-                color: "#DC143C",
-                border: "1px solid #DC143C44"
-              },
-              "data-ocid": "admin_login.error_state",
-              children: errorMsg
+                background: "radial-gradient(circle, #DC143C, transparent)"
+              }
             }
           ),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "button",
+            "div",
             {
-              type: "submit",
-              disabled: loginMutation.isPending,
-              className: "w-full py-3 rounded-lg font-bold text-white transition-all disabled:opacity-60 disabled:cursor-not-allowed hover:opacity-90 active:scale-95",
+              className: "absolute -bottom-32 -right-32 w-96 h-96 rounded-full opacity-10",
               style: {
-                background: "linear-gradient(135deg, #DC143C, #006A4E)"
-              },
-              "data-ocid": "admin_login.submit_button",
-              children: loginMutation.isPending ? "যাচাই করা হচ্ছে..." : "লগইন করুন"
+                background: "radial-gradient(circle, #006A4E, transparent)"
+              }
             }
           )
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-6 text-center text-xs text-muted-foreground", children: "শুধুমাত্র অনুমোদিত প্রশাসকদের জন্য" })
-      ] }) })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-full max-w-md relative z-10", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "div",
+          {
+            className: "rounded-2xl shadow-2xl p-8 border",
+            style: {
+              background: "rgba(255,255,255,0.04)",
+              backdropFilter: "blur(20px)",
+              borderColor: "rgba(255,255,255,0.1)"
+            },
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center gap-3 mb-8", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(ChhatraLogo, { size: 90 }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "font-display text-2xl font-bold text-white text-center leading-tight mt-1", children: "২নং কপিলমুনি ইউনিয়ন ছাত্রদল" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(ShieldCheck, { className: "w-4 h-4 text-green-400" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-green-400 font-semibold tracking-wide uppercase", children: "প্রশাসন প্যানেল" })
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "div",
+                  {
+                    className: "h-px w-32 rounded-full",
+                    style: {
+                      background: "linear-gradient(90deg, transparent, #DC143C, #006A4E, transparent)"
+                    }
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("form", { onSubmit: handleSubmit, className: "space-y-5", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                    "label",
+                    {
+                      className: "text-sm font-semibold text-green-300 flex items-center gap-2",
+                      htmlFor: "admin-password",
+                      children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(Lock, { className: "w-3.5 h-3.5" }),
+                        "অ্যাডমিন পাসওয়ার্ড"
+                      ]
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "input",
+                      {
+                        id: "admin-password",
+                        type: showPassword ? "text" : "password",
+                        autoComplete: "current-password",
+                        required: true,
+                        value: password,
+                        onChange: (e3) => setPassword(e3.target.value),
+                        placeholder: "পাসওয়ার্ড লিখুন",
+                        className: "w-full px-4 py-3 pr-12 rounded-xl border text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-green-500/50 transition-all",
+                        style: {
+                          background: "rgba(255,255,255,0.07)",
+                          borderColor: "rgba(255,255,255,0.15)"
+                        },
+                        "data-ocid": "admin_login.password_input"
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "button",
+                      {
+                        type: "button",
+                        onClick: () => setShowPassword((v2) => !v2),
+                        className: "absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/80 transition-colors",
+                        "aria-label": showPassword ? "পাসওয়ার্ড লুকান" : "পাসওয়ার্ড দেখুন",
+                        children: showPassword ? /* @__PURE__ */ jsxRuntimeExports.jsx(EyeOff, { className: "w-5 h-5" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Eye, { className: "w-5 h-5" })
+                      }
+                    )
+                  ] })
+                ] }),
+                successMsg && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                  "div",
+                  {
+                    className: "px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2",
+                    style: {
+                      background: "rgba(0,106,78,0.2)",
+                      color: "#4ade80",
+                      border: "1px solid rgba(0,106,78,0.4)"
+                    },
+                    "data-ocid": "admin_login.success_state",
+                    children: [
+                      "✅ ",
+                      successMsg
+                    ]
+                  }
+                ),
+                errorMsg && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                  "div",
+                  {
+                    className: "px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2",
+                    style: {
+                      background: "rgba(220,20,60,0.15)",
+                      color: "#ff6b6b",
+                      border: "1px solid rgba(220,20,60,0.3)"
+                    },
+                    "data-ocid": "admin_login.error_state",
+                    children: [
+                      "⚠️ ",
+                      errorMsg
+                    ]
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                  "button",
+                  {
+                    type: "submit",
+                    disabled: !password.trim(),
+                    className: "w-full py-3 rounded-xl font-bold text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 active:scale-95 flex items-center justify-center gap-2",
+                    style: {
+                      background: "linear-gradient(135deg, #DC143C 0%, #8B0000 50%, #006A4E 100%)",
+                      boxShadow: "0 4px 20px rgba(220,20,60,0.3)"
+                    },
+                    "data-ocid": "admin_login.submit_button",
+                    children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(ShieldCheck, { className: "w-4 h-4" }),
+                      "লগইন করুন"
+                    ]
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "p",
+                {
+                  className: "mt-6 text-center text-xs",
+                  style: { color: "rgba(255,255,255,0.3)" },
+                  children: "শুধুমাত্র অনুমোদিত প্রশাসকদের জন্য · সকল কার্যক্রম লগ করা হয়"
+                }
+              )
+            ]
+          }
+        ) })
+      ]
     }
   );
 }
@@ -61132,7 +62418,7 @@ const SAMPLE_ALUMNI = [
     currentStatus: "ডাক্তার, উপজেলা স্বাস্থ্য কমপ্লেক্স"
   }
 ];
-function getInitials$2(name) {
+function getInitials$3(name) {
   return name.split(" ").slice(0, 2).map((w3) => w3[0]).join("");
 }
 function AlumniPage() {
@@ -61258,7 +62544,7 @@ function AlumniPage() {
                     style: {
                       background: "linear-gradient(135deg, #006A4E, #DC143C)"
                     },
-                    children: getInitials$2(alumnus.name)
+                    children: getInitials$3(alumnus.name)
                   }
                 ),
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 min-w-0", children: [
@@ -61350,6 +62636,14 @@ function useMembers() {
     enabled: !!actor && !isFetching
   });
 }
+function useMemberStats() {
+  const { actor, isFetching } = useAct();
+  return useQuery({
+    queryKey: ["member-stats"],
+    queryFn: async () => actor ? actor.getMemberStats() : { pendingCount: 0n, total: 0n, joinedYesterday: 0n, joinedToday: 0n },
+    enabled: !!actor && !isFetching
+  });
+}
 function useMyProfile() {
   const { actor, isFetching } = useAct();
   return useQuery({
@@ -61405,7 +62699,7 @@ function toBengaliRelativeTime(nsTimestamp) {
   if (diffHr < 24) return `${toBengaliNum(diffHr)} ঘন্টা আগে`;
   return `${toBengaliNum(diffDay)} দিন আগে`;
 }
-function getInitials$1(name) {
+function getInitials$2(name) {
   return name.split(" ").slice(0, 2).map((w3) => {
     var _a3;
     return ((_a3 = w3[0]) == null ? void 0 : _a3.toUpperCase()) ?? "";
@@ -61433,7 +62727,7 @@ function MessageBubble({
           "div",
           {
             className: `w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-xs font-bold text-white ${isOwn ? "bg-primary" : "bg-accent"}`,
-            children: getInitials$1(msg.senderName)
+            children: getInitials$2(msg.senderName)
           }
         ),
         /* @__PURE__ */ jsxRuntimeExports.jsxs(
@@ -61650,7 +62944,7 @@ function createContext2(rootComponentName, defaultContext) {
   }
   return [Provider, useContext2];
 }
-function createContextScope(scopeName, createContextScopeDeps = []) {
+function createContextScope$1(scopeName, createContextScopeDeps = []) {
   let defaultContexts = [];
   function createContext3(rootComponentName, defaultContext) {
     const BaseContext = reactExports.createContext(defaultContext);
@@ -61687,9 +62981,9 @@ function createContextScope(scopeName, createContextScopeDeps = []) {
     };
   };
   createScope.scopeName = scopeName;
-  return [createContext3, composeContextScopes(createScope, ...createContextScopeDeps)];
+  return [createContext3, composeContextScopes$1(createScope, ...createContextScopeDeps)];
 }
-function composeContextScopes(...scopes) {
+function composeContextScopes$1(...scopes) {
   const baseScope = scopes[0];
   if (scopes.length === 1) return baseScope;
   const createScope = () => {
@@ -61714,11 +63008,11 @@ var useLayoutEffect2 = (globalThis == null ? void 0 : globalThis.document) ? rea
 var useReactId = React$5[" useId ".trim().toString()] || (() => void 0);
 var count$1 = 0;
 function useId(deterministicId) {
-  const [id2, setId] = reactExports.useState(useReactId());
+  const [id, setId] = reactExports.useState(useReactId());
   useLayoutEffect2(() => {
     setId((reactId) => reactId ?? String(count$1++));
   }, [deterministicId]);
-  return deterministicId || (id2 ? `radix-${id2}` : "");
+  return deterministicId || (id ? `radix-${id}` : "");
 }
 var useInsertionEffect = React$5[" useInsertionEffect ".trim().toString()] || useLayoutEffect2;
 function useControllableState({
@@ -61869,7 +63163,7 @@ function getElementRef$1(element) {
   }
   return element.props.ref || element.ref;
 }
-var NODES = [
+var NODES$1 = [
   "a",
   "button",
   "div",
@@ -61888,7 +63182,7 @@ var NODES = [
   "svg",
   "ul"
 ];
-var Primitive = NODES.reduce((primitive, node) => {
+var Primitive$1 = NODES$1.reduce((primitive, node) => {
   const Slot2 = /* @__PURE__ */ createSlot(`Primitive.${node}`);
   const Node2 = reactExports.forwardRef((props, forwardedRef) => {
     const { asChild, ...primitiveProps } = props;
@@ -62014,7 +63308,7 @@ var DismissableLayer = reactExports.forwardRef(
       return () => document.removeEventListener(CONTEXT_UPDATE, handleUpdate);
     }, []);
     return /* @__PURE__ */ jsxRuntimeExports.jsx(
-      Primitive.div,
+      Primitive$1.div,
       {
         ...layerProps,
         ref: composedRefs,
@@ -62047,7 +63341,7 @@ var DismissableLayerBranch = reactExports.forwardRef((props, forwardedRef) => {
       };
     }
   }, [context.branches]);
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(Primitive.div, { ...props, ref: composedRefs });
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(Primitive$1.div, { ...props, ref: composedRefs });
 });
 DismissableLayerBranch.displayName = BRANCH_NAME;
 function usePointerDownOutside(onPointerDownOutside, ownerDocument = globalThis == null ? void 0 : globalThis.document) {
@@ -62244,7 +63538,7 @@ var FocusScope = reactExports.forwardRef((props, forwardedRef) => {
     },
     [loop, trapped, focusScope.paused]
   );
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(Primitive.div, { tabIndex: -1, ...scopeProps, ref: composedRefs, onKeyDown: handleKeyDown });
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(Primitive$1.div, { tabIndex: -1, ...scopeProps, ref: composedRefs, onKeyDown: handleKeyDown });
 });
 FocusScope.displayName = FOCUS_SCOPE_NAME;
 function focusFirst(candidates, { select = false } = {}) {
@@ -62334,7 +63628,7 @@ var Portal$1 = reactExports.forwardRef((props, forwardedRef) => {
   const [mounted, setMounted] = reactExports.useState(false);
   useLayoutEffect2(() => setMounted(true), []);
   const container = containerProp || mounted && ((_a3 = globalThis == null ? void 0 : globalThis.document) == null ? void 0 : _a3.body);
-  return container ? ReactDOM$2.createPortal(/* @__PURE__ */ jsxRuntimeExports.jsx(Primitive.div, { ...portalProps, ref: forwardedRef }), container) : null;
+  return container ? ReactDOM$2.createPortal(/* @__PURE__ */ jsxRuntimeExports.jsx(Primitive$1.div, { ...portalProps, ref: forwardedRef }), container) : null;
 });
 Portal$1.displayName = PORTAL_NAME$1;
 function useStateMachine(initialState, machine) {
@@ -62345,14 +63639,14 @@ function useStateMachine(initialState, machine) {
 }
 var Presence = (props) => {
   const { present, children } = props;
-  const presence = usePresence$1(present);
+  const presence = usePresence(present);
   const child = typeof children === "function" ? children({ present: presence.isPresent }) : reactExports.Children.only(children);
   const ref = useComposedRefs(presence.ref, getElementRef(child));
   const forceMount = typeof children === "function";
   return forceMount || presence.isPresent ? reactExports.cloneElement(child, { ref }) : null;
 };
 Presence.displayName = "Presence";
-function usePresence$1(present) {
+function usePresence(present) {
   const [node, setNode] = reactExports.useState();
   const stylesRef = reactExports.useRef(null);
   const prevPresentRef = reactExports.useRef(present);
@@ -62556,7 +63850,7 @@ function useCallbackRef(initialValue, callback) {
   ref.callback = callback;
   return ref.facade;
 }
-var useIsomorphicLayoutEffect$2 = typeof window !== "undefined" ? reactExports.useLayoutEffect : reactExports.useEffect;
+var useIsomorphicLayoutEffect$1 = typeof window !== "undefined" ? reactExports.useLayoutEffect : reactExports.useEffect;
 var currentValues = /* @__PURE__ */ new WeakMap();
 function useMergeRefs(refs, defaultValue) {
   var callbackRef = useCallbackRef(null, function(newValue) {
@@ -62564,7 +63858,7 @@ function useMergeRefs(refs, defaultValue) {
       return assignRef(ref, newValue);
     });
   });
-  useIsomorphicLayoutEffect$2(function() {
+  useIsomorphicLayoutEffect$1(function() {
     var oldValue = currentValues.get(callbackRef);
     if (oldValue) {
       var prevRefs_1 = new Set(oldValue);
@@ -62652,8 +63946,8 @@ function innerCreateMedium(defaults2, middleware) {
           pendingQueue.push(x3);
           cycle();
         },
-        filter: function(filter2) {
-          pendingQueue = pendingQueue.filter(filter2);
+        filter: function(filter) {
+          pendingQueue = pendingQueue.filter(filter);
           return buffer;
         }
       };
@@ -62778,10 +64072,10 @@ var styleHookSingleton = function() {
   };
 };
 var styleSingleton = function() {
-  var useStyle2 = styleHookSingleton();
+  var useStyle = styleHookSingleton();
   var Sheet = function(_a3) {
     var styles = _a3.styles, dynamic = _a3.dynamic;
-    useStyle2(styles, dynamic);
+    useStyle(styles, dynamic);
     return null;
   };
   return Sheet;
@@ -62983,8 +64277,8 @@ var extractRef = function(ref) {
 var deltaCompare = function(x3, y2) {
   return x3[0] === y2[0] && x3[1] === y2[1];
 };
-var generateStyle = function(id2) {
-  return "\n  .block-interactivity-".concat(id2, " {pointer-events: none;}\n  .allow-interactivity-").concat(id2, " {pointer-events: all;}\n");
+var generateStyle = function(id) {
+  return "\n  .block-interactivity-".concat(id, " {pointer-events: none;}\n  .allow-interactivity-").concat(id, " {pointer-events: all;}\n");
 };
 var idCounter = 0;
 var lockStack = [];
@@ -62992,7 +64286,7 @@ function RemoveScrollSideCar(props) {
   var shouldPreventQueue = reactExports.useRef([]);
   var touchStartRef = reactExports.useRef([0, 0]);
   var activeAxis = reactExports.useRef();
-  var id2 = reactExports.useState(idCounter++)[0];
+  var id = reactExports.useState(idCounter++)[0];
   var Style2 = reactExports.useState(styleSingleton)[0];
   var lastProps = reactExports.useRef(props);
   reactExports.useEffect(function() {
@@ -63000,15 +64294,15 @@ function RemoveScrollSideCar(props) {
   }, [props]);
   reactExports.useEffect(function() {
     if (props.inert) {
-      document.body.classList.add("block-interactivity-".concat(id2));
+      document.body.classList.add("block-interactivity-".concat(id));
       var allow_1 = __spreadArray([props.lockRef.current], (props.shards || []).map(extractRef), true).filter(Boolean);
       allow_1.forEach(function(el) {
-        return el.classList.add("allow-interactivity-".concat(id2));
+        return el.classList.add("allow-interactivity-".concat(id));
       });
       return function() {
-        document.body.classList.remove("block-interactivity-".concat(id2));
+        document.body.classList.remove("block-interactivity-".concat(id));
         allow_1.forEach(function(el) {
-          return el.classList.remove("allow-interactivity-".concat(id2));
+          return el.classList.remove("allow-interactivity-".concat(id));
         });
       };
     }
@@ -63125,7 +64419,7 @@ function RemoveScrollSideCar(props) {
   return reactExports.createElement(
     reactExports.Fragment,
     null,
-    inert ? reactExports.createElement(Style2, { styles: generateStyle(id2) }) : null,
+    inert ? reactExports.createElement(Style2, { styles: generateStyle(id) }) : null,
     removeScrollBar ? reactExports.createElement(RemoveScrollBar, { noRelative: props.noRelative, gapMode: props.gapMode }) : null
   );
 }
@@ -63265,7 +64559,7 @@ var hideOthers = function(originalTarget, parentNode, markerName) {
   return applyAttributeToOthers(targets, activeParentNode, markerName, "aria-hidden");
 };
 var DIALOG_NAME = "Dialog";
-var [createDialogContext] = createContextScope(DIALOG_NAME);
+var [createDialogContext] = createContextScope$1(DIALOG_NAME);
 var [DialogProvider, useDialogContext] = createDialogContext(DIALOG_NAME);
 var Dialog$1 = (props) => {
   const {
@@ -63309,7 +64603,7 @@ var DialogTrigger = reactExports.forwardRef(
     const context = useDialogContext(TRIGGER_NAME, __scopeDialog);
     const composedTriggerRef = useComposedRefs(forwardedRef, context.triggerRef);
     return /* @__PURE__ */ jsxRuntimeExports.jsx(
-      Primitive.button,
+      Primitive$1.button,
       {
         type: "button",
         "aria-haspopup": "dialog",
@@ -63353,7 +64647,7 @@ var DialogOverlayImpl = reactExports.forwardRef(
       // Make sure `Content` is scrollable even when it doesn't live inside `RemoveScroll`
       // ie. when `Overlay` and `Content` are siblings
       /* @__PURE__ */ jsxRuntimeExports.jsx(ReactRemoveScroll, { as: Slot, allowPinchZoom: true, shards: [context.contentRef], children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-        Primitive.div,
+        Primitive$1.div,
         {
           "data-state": getState(context.open),
           ...overlayProps,
@@ -63494,7 +64788,7 @@ var DialogTitle$1 = reactExports.forwardRef(
   (props, forwardedRef) => {
     const { __scopeDialog, ...titleProps } = props;
     const context = useDialogContext(TITLE_NAME, __scopeDialog);
-    return /* @__PURE__ */ jsxRuntimeExports.jsx(Primitive.h2, { id: context.titleId, ...titleProps, ref: forwardedRef });
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(Primitive$1.h2, { id: context.titleId, ...titleProps, ref: forwardedRef });
   }
 );
 DialogTitle$1.displayName = TITLE_NAME;
@@ -63503,7 +64797,7 @@ var DialogDescription = reactExports.forwardRef(
   (props, forwardedRef) => {
     const { __scopeDialog, ...descriptionProps } = props;
     const context = useDialogContext(DESCRIPTION_NAME, __scopeDialog);
-    return /* @__PURE__ */ jsxRuntimeExports.jsx(Primitive.p, { id: context.descriptionId, ...descriptionProps, ref: forwardedRef });
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(Primitive$1.p, { id: context.descriptionId, ...descriptionProps, ref: forwardedRef });
   }
 );
 DialogDescription.displayName = DESCRIPTION_NAME;
@@ -63513,7 +64807,7 @@ var DialogClose = reactExports.forwardRef(
     const { __scopeDialog, ...closeProps } = props;
     const context = useDialogContext(CLOSE_NAME, __scopeDialog);
     return /* @__PURE__ */ jsxRuntimeExports.jsx(
-      Primitive.button,
+      Primitive$1.button,
       {
         type: "button",
         ...closeProps,
@@ -63562,7 +64856,7 @@ var DescriptionWarning = ({ contentRef, descriptionId }) => {
   }, [MESSAGE, contentRef, descriptionId]);
   return null;
 };
-var Root = Dialog$1;
+var Root$1 = Dialog$1;
 var Portal = DialogPortal$1;
 var Overlay = DialogOverlay$1;
 var Content = DialogContent$1;
@@ -63571,7 +64865,7 @@ var Close = DialogClose;
 function Dialog({
   ...props
 }) {
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(Root, { "data-slot": "dialog", ...props });
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(Root$1, { "data-slot": "dialog", ...props });
 }
 function DialogPortal({
   ...props
@@ -63775,7 +65069,7 @@ const KHULNA_LEADERS = [
     initials: "মর"
   }
 ];
-function Avatar({
+function Avatar$2({
   initials,
   color: color2,
   size = "md",
@@ -63829,7 +65123,7 @@ function MemberCard({
       children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "p-5 flex flex-col items-center text-center gap-3", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(
-            Avatar,
+            Avatar$2,
             {
               initials: member.initials,
               color: member.avatarColor,
@@ -63883,7 +65177,7 @@ function MemberDetailModal({
         /* @__PURE__ */ jsxRuntimeExports.jsx(DialogHeader, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(DialogTitle, { className: "text-foreground font-display", children: "সদস্যের বিবরণ" }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center gap-4 py-2", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(
-            Avatar,
+            Avatar$2,
             {
               initials: member.initials,
               color: member.avatarColor,
@@ -64108,7 +65402,7 @@ function CommitteePage() {
             children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "p-6 flex flex-col items-center text-center gap-4", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative", children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  Avatar,
+                  Avatar$2,
                   {
                     initials: convener.initials,
                     color: convener.avatarColor,
@@ -64196,7 +65490,7 @@ function CommitteePage() {
             className: "text-left rounded-xl border border-[#006A4E]/30 bg-card p-5 flex flex-col items-center text-center gap-3 transition-smooth hover:shadow-lg hover:border-[#006A4E]/60 hover:-translate-y-0.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx(
-                Avatar,
+                Avatar$2,
                 {
                   initials: m2.initials,
                   color: m2.avatarColor,
@@ -64225,6 +65519,528 @@ function CommitteePage() {
       }
     )
   ] });
+}
+function useCountUp(target, duration = 1200, delay = 0) {
+  const [count2, setCount] = reactExports.useState(0);
+  reactExports.useEffect(() => {
+    const timer = setTimeout(() => {
+      if (target === 0) return;
+      const steps = 40;
+      const increment = target / steps;
+      let current = 0;
+      const interval = setInterval(() => {
+        current += increment;
+        if (current >= target) {
+          setCount(target);
+          clearInterval(interval);
+        } else {
+          setCount(Math.floor(current));
+        }
+      }, duration / steps);
+      return () => clearInterval(interval);
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [target, duration, delay]);
+  return count2;
+}
+function StatCard({
+  label,
+  value,
+  icon,
+  gradient,
+  suffix: suffix2 = "",
+  delay = 0
+}) {
+  const count2 = useCountUp(value, 1e3, delay);
+  const ref = reactExports.useRef(null);
+  const [visible, setVisible] = reactExports.useState(false);
+  reactExports.useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) setVisible(true);
+      },
+      { threshold: 0.1 }
+    );
+    if (ref.current) observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, []);
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      ref,
+      className: `stat-card-enter ${visible ? "stat-card-visible" : ""}`,
+      style: { transitionDelay: `${delay}ms` },
+      children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Card, { className: "overflow-hidden border-0 shadow-lg hover:shadow-xl transition-smooth hover:-translate-y-1", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `h-1.5 ${gradient}` }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "p-4 pt-3", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between mb-2", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-2xl", children: icon }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-3xl font-display font-bold text-foreground", children: [
+              count2,
+              suffix2
+            ] })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm font-semibold text-muted-foreground text-right", children: label })
+        ] })
+      ] })
+    }
+  );
+}
+function DashboardStats({
+  totalMembers,
+  chatCount,
+  rank,
+  daysSinceJoining,
+  loading
+}) {
+  if (loading) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid grid-cols-2 lg:grid-cols-4 gap-3", children: [1, 2, 3, 4].map((i2) => /* @__PURE__ */ jsxRuntimeExports.jsx(Skeleton, { className: "h-24 rounded-xl" }, i2)) });
+  }
+  const stats = [
+    {
+      label: "মোট সদস্য",
+      value: totalMembers,
+      icon: "👥",
+      gradient: "bg-gradient-to-r from-green-600 to-emerald-500",
+      delay: 0
+    },
+    {
+      label: "চ্যাট সদস্য",
+      value: chatCount,
+      icon: "💬",
+      gradient: "bg-gradient-to-r from-blue-500 to-cyan-400",
+      delay: 100
+    },
+    {
+      label: "আপনার ক্রম",
+      value: rank,
+      icon: "🏅",
+      gradient: "bg-gradient-to-r from-amber-500 to-yellow-400",
+      suffix: "#",
+      delay: 200
+    },
+    {
+      label: "যোগদানের দিন",
+      value: daysSinceJoining,
+      icon: "📅",
+      gradient: "bg-gradient-to-r from-red-500 to-rose-400",
+      delay: 300
+    }
+  ];
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      className: "grid grid-cols-2 lg:grid-cols-4 gap-3",
+      "data-ocid": "dashboard.stats_section",
+      children: stats.map((s2) => /* @__PURE__ */ jsxRuntimeExports.jsx(StatCard, { ...s2 }, s2.label))
+    }
+  );
+}
+function createContextScope(scopeName, createContextScopeDeps = []) {
+  let defaultContexts = [];
+  function createContext3(rootComponentName, defaultContext) {
+    const BaseContext = reactExports.createContext(defaultContext);
+    BaseContext.displayName = rootComponentName + "Context";
+    const index2 = defaultContexts.length;
+    defaultContexts = [...defaultContexts, defaultContext];
+    const Provider = (props) => {
+      var _a3;
+      const { scope, children, ...context } = props;
+      const Context = ((_a3 = scope == null ? void 0 : scope[scopeName]) == null ? void 0 : _a3[index2]) || BaseContext;
+      const value = reactExports.useMemo(() => context, Object.values(context));
+      return /* @__PURE__ */ jsxRuntimeExports.jsx(Context.Provider, { value, children });
+    };
+    Provider.displayName = rootComponentName + "Provider";
+    function useContext2(consumerName, scope) {
+      var _a3;
+      const Context = ((_a3 = scope == null ? void 0 : scope[scopeName]) == null ? void 0 : _a3[index2]) || BaseContext;
+      const context = reactExports.useContext(Context);
+      if (context) return context;
+      if (defaultContext !== void 0) return defaultContext;
+      throw new Error(`\`${consumerName}\` must be used within \`${rootComponentName}\``);
+    }
+    return [Provider, useContext2];
+  }
+  const createScope = () => {
+    const scopeContexts = defaultContexts.map((defaultContext) => {
+      return reactExports.createContext(defaultContext);
+    });
+    return function useScope(scope) {
+      const contexts = (scope == null ? void 0 : scope[scopeName]) || scopeContexts;
+      return reactExports.useMemo(
+        () => ({ [`__scope${scopeName}`]: { ...scope, [scopeName]: contexts } }),
+        [scope, contexts]
+      );
+    };
+  };
+  createScope.scopeName = scopeName;
+  return [createContext3, composeContextScopes(createScope, ...createContextScopeDeps)];
+}
+function composeContextScopes(...scopes) {
+  const baseScope = scopes[0];
+  if (scopes.length === 1) return baseScope;
+  const createScope = () => {
+    const scopeHooks = scopes.map((createScope2) => ({
+      useScope: createScope2(),
+      scopeName: createScope2.scopeName
+    }));
+    return function useComposedScopes(overrideScopes) {
+      const nextScopes = scopeHooks.reduce((nextScopes2, { useScope, scopeName }) => {
+        const scopeProps = useScope(overrideScopes);
+        const currentScope = scopeProps[`__scope${scopeName}`];
+        return { ...nextScopes2, ...currentScope };
+      }, {});
+      return reactExports.useMemo(() => ({ [`__scope${baseScope.scopeName}`]: nextScopes }), [nextScopes]);
+    };
+  };
+  createScope.scopeName = baseScope.scopeName;
+  return createScope;
+}
+var NODES = [
+  "a",
+  "button",
+  "div",
+  "form",
+  "h2",
+  "h3",
+  "img",
+  "input",
+  "label",
+  "li",
+  "nav",
+  "ol",
+  "p",
+  "select",
+  "span",
+  "svg",
+  "ul"
+];
+var Primitive = NODES.reduce((primitive, node) => {
+  const Slot2 = /* @__PURE__ */ createSlot$1(`Primitive.${node}`);
+  const Node2 = reactExports.forwardRef((props, forwardedRef) => {
+    const { asChild, ...primitiveProps } = props;
+    const Comp = asChild ? Slot2 : node;
+    if (typeof window !== "undefined") {
+      window[Symbol.for("radix-ui")] = true;
+    }
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(Comp, { ...primitiveProps, ref: forwardedRef });
+  });
+  Node2.displayName = `Primitive.${node}`;
+  return { ...primitive, [node]: Node2 };
+}, {});
+function useIsHydrated() {
+  return shimExports.useSyncExternalStore(
+    subscribe,
+    () => true,
+    () => false
+  );
+}
+function subscribe() {
+  return () => {
+  };
+}
+var AVATAR_NAME = "Avatar";
+var [createAvatarContext] = createContextScope(AVATAR_NAME);
+var [AvatarProvider, useAvatarContext] = createAvatarContext(AVATAR_NAME);
+var Avatar$1 = reactExports.forwardRef(
+  (props, forwardedRef) => {
+    const { __scopeAvatar, ...avatarProps } = props;
+    const [imageLoadingStatus, setImageLoadingStatus] = reactExports.useState("idle");
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(
+      AvatarProvider,
+      {
+        scope: __scopeAvatar,
+        imageLoadingStatus,
+        onImageLoadingStatusChange: setImageLoadingStatus,
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx(Primitive.span, { ...avatarProps, ref: forwardedRef })
+      }
+    );
+  }
+);
+Avatar$1.displayName = AVATAR_NAME;
+var IMAGE_NAME = "AvatarImage";
+var AvatarImage$1 = reactExports.forwardRef(
+  (props, forwardedRef) => {
+    const { __scopeAvatar, src, onLoadingStatusChange = () => {
+    }, ...imageProps } = props;
+    const context = useAvatarContext(IMAGE_NAME, __scopeAvatar);
+    const imageLoadingStatus = useImageLoadingStatus(src, imageProps);
+    const handleLoadingStatusChange = useCallbackRef$1((status) => {
+      onLoadingStatusChange(status);
+      context.onImageLoadingStatusChange(status);
+    });
+    useLayoutEffect2(() => {
+      if (imageLoadingStatus !== "idle") {
+        handleLoadingStatusChange(imageLoadingStatus);
+      }
+    }, [imageLoadingStatus, handleLoadingStatusChange]);
+    return imageLoadingStatus === "loaded" ? /* @__PURE__ */ jsxRuntimeExports.jsx(Primitive.img, { ...imageProps, ref: forwardedRef, src }) : null;
+  }
+);
+AvatarImage$1.displayName = IMAGE_NAME;
+var FALLBACK_NAME = "AvatarFallback";
+var AvatarFallback$1 = reactExports.forwardRef(
+  (props, forwardedRef) => {
+    const { __scopeAvatar, delayMs, ...fallbackProps } = props;
+    const context = useAvatarContext(FALLBACK_NAME, __scopeAvatar);
+    const [canRender, setCanRender] = reactExports.useState(delayMs === void 0);
+    reactExports.useEffect(() => {
+      if (delayMs !== void 0) {
+        const timerId = window.setTimeout(() => setCanRender(true), delayMs);
+        return () => window.clearTimeout(timerId);
+      }
+    }, [delayMs]);
+    return canRender && context.imageLoadingStatus !== "loaded" ? /* @__PURE__ */ jsxRuntimeExports.jsx(Primitive.span, { ...fallbackProps, ref: forwardedRef }) : null;
+  }
+);
+AvatarFallback$1.displayName = FALLBACK_NAME;
+function resolveLoadingStatus(image, src) {
+  if (!image) {
+    return "idle";
+  }
+  if (!src) {
+    return "error";
+  }
+  if (image.src !== src) {
+    image.src = src;
+  }
+  return image.complete && image.naturalWidth > 0 ? "loaded" : "loading";
+}
+function useImageLoadingStatus(src, { referrerPolicy, crossOrigin }) {
+  const isHydrated = useIsHydrated();
+  const imageRef = reactExports.useRef(null);
+  const image = (() => {
+    if (!isHydrated) return null;
+    if (!imageRef.current) {
+      imageRef.current = new window.Image();
+    }
+    return imageRef.current;
+  })();
+  const [loadingStatus, setLoadingStatus] = reactExports.useState(
+    () => resolveLoadingStatus(image, src)
+  );
+  useLayoutEffect2(() => {
+    setLoadingStatus(resolveLoadingStatus(image, src));
+  }, [image, src]);
+  useLayoutEffect2(() => {
+    const updateStatus = (status) => () => {
+      setLoadingStatus(status);
+    };
+    if (!image) return;
+    const handleLoad = updateStatus("loaded");
+    const handleError = updateStatus("error");
+    image.addEventListener("load", handleLoad);
+    image.addEventListener("error", handleError);
+    if (referrerPolicy) {
+      image.referrerPolicy = referrerPolicy;
+    }
+    if (typeof crossOrigin === "string") {
+      image.crossOrigin = crossOrigin;
+    }
+    return () => {
+      image.removeEventListener("load", handleLoad);
+      image.removeEventListener("error", handleError);
+    };
+  }, [image, crossOrigin, referrerPolicy]);
+  return loadingStatus;
+}
+var Root = Avatar$1;
+var Image = AvatarImage$1;
+var Fallback = AvatarFallback$1;
+function Avatar({
+  className,
+  ...props
+}) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    Root,
+    {
+      "data-slot": "avatar",
+      className: cn(
+        "relative flex size-8 shrink-0 overflow-hidden rounded-full",
+        className
+      ),
+      ...props
+    }
+  );
+}
+function AvatarImage({
+  className,
+  ...props
+}) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    Image,
+    {
+      "data-slot": "avatar-image",
+      className: cn("aspect-square size-full", className),
+      ...props
+    }
+  );
+}
+function AvatarFallback({
+  className,
+  ...props
+}) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    Fallback,
+    {
+      "data-slot": "avatar-fallback",
+      className: cn(
+        "bg-muted flex size-full items-center justify-center rounded-full",
+        className
+      ),
+      ...props
+    }
+  );
+}
+function formatDate$5(ts) {
+  const ms = Number(ts / 1000000n);
+  return new Date(ms).toLocaleDateString("bn-BD", {
+    year: "numeric",
+    month: "long",
+    day: "numeric"
+  });
+}
+function getInitials$1(name) {
+  return name.split(" ").slice(0, 2).map((w3) => w3[0]).join("").toUpperCase();
+}
+function MemberProfileModal({
+  member,
+  onClose
+}) {
+  const photoUrl = member.photoBlob.getDirectURL();
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(Dialog, { open: true, onOpenChange: onClose, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    DialogContent,
+    {
+      className: "max-w-md",
+      "data-ocid": "dashboard.member_profile_dialog",
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(DialogHeader, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(DialogTitle, { className: "font-display text-foreground", children: member.fullName }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Button,
+          {
+            type: "button",
+            variant: "ghost",
+            size: "icon",
+            className: "absolute right-4 top-4",
+            onClick: onClose,
+            "data-ocid": "dashboard.member_profile.close_button",
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx(X$1, { className: "w-4 h-4" })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center gap-4 py-2", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(Avatar, { className: "w-28 h-28 border-4 border-primary shadow-lg", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(AvatarImage, { src: photoUrl, alt: member.fullName }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(AvatarFallback, { className: "bg-primary text-primary-foreground text-2xl font-bold", children: getInitials$1(member.fullName) })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(Badge, { className: "absolute -bottom-2 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-xs whitespace-nowrap", children: [
+              "#",
+              Number(member.rank)
+            ] })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-xl font-display font-bold text-foreground", children: member.fullName }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              Badge,
+              {
+                variant: "outline",
+                className: "mt-1 border-primary text-primary font-semibold",
+                children: member.designation
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "w-full space-y-2 text-sm", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 text-muted-foreground", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Phone, { className: "w-4 h-4 shrink-0 text-primary" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: member.phone })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 text-muted-foreground", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Mail, { className: "w-4 h-4 shrink-0 text-primary" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "break-all", children: member.email })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-start gap-2 text-muted-foreground", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(MapPin, { className: "w-4 h-4 shrink-0 mt-0.5 text-primary" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "break-words", children: member.fullAddress })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 text-muted-foreground", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Calendar, { className: "w-4 h-4 shrink-0 text-primary" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+                "যোগদান: ",
+                formatDate$5(member.registeredAt)
+              ] })
+            ] }),
+            member.joinReason && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-3 p-3 bg-muted rounded-lg border-l-4 border-primary", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs font-semibold text-muted-foreground mb-1", children: "যোগ দেওয়ার কারণ" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-foreground text-sm italic", children: member.joinReason })
+            ] })
+          ] })
+        ] })
+      ]
+    }
+  ) });
+}
+function MemberCardItem({ member, index: index2 }) {
+  const [showModal, setShowModal] = reactExports.useState(false);
+  const photoUrl = member.photoBlob.getDirectURL();
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "button",
+      {
+        type: "button",
+        onClick: () => setShowModal(true),
+        className: "member-card-enter group flex flex-col items-center gap-2 p-4 rounded-xl bg-card border border-border shadow-sm hover:shadow-lg hover:-translate-y-1 hover:border-primary/40 transition-smooth cursor-pointer w-full text-left",
+        style: { animationDelay: `${index2 * 60}ms` },
+        "data-ocid": `dashboard.member_grid.item.${index2 + 1}`,
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(Avatar, { className: "w-16 h-16 border-2 border-border group-hover:border-primary transition-smooth", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(AvatarImage, { src: photoUrl, alt: member.fullName }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(AvatarFallback, { className: "bg-primary/10 text-primary font-bold", children: getInitials$1(member.fullName) })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "absolute -top-1 -right-1 w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center shadow", children: Number(member.rank) })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center min-w-0 w-full", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-semibold text-sm text-foreground truncate", children: member.fullName }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground truncate mt-0.5", children: member.designation })
+          ] })
+        ]
+      }
+    ),
+    showModal && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      MemberProfileModal,
+      {
+        member,
+        onClose: () => setShowModal(false)
+      }
+    )
+  ] });
+}
+function MemberGrid({ members, loading }) {
+  const approved = members.filter((m2) => m2.status === MemberStatus.approved).sort((a2, b2) => Number(a2.rank) - Number(b2.rank));
+  if (loading) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3", children: [1, 2, 3, 4, 5, 6, 7, 8].map((i2) => /* @__PURE__ */ jsxRuntimeExports.jsx(Skeleton, { className: "h-32 rounded-xl" }, i2)) });
+  }
+  if (approved.length === 0) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        className: "text-center py-10 text-muted-foreground",
+        "data-ocid": "dashboard.member_grid.empty_state",
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-4xl block mb-2", children: "👥" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm", children: "এখনো কোনো অনুমোদিত সদস্য নেই" })
+        ]
+      }
+    );
+  }
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      className: "grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3",
+      "data-ocid": "dashboard.member_grid",
+      children: approved.map((member, i2) => /* @__PURE__ */ jsxRuntimeExports.jsx(MemberCardItem, { member, index: i2 }, member.id.toString()))
+    }
+  );
 }
 const scriptRel = "modulepreload";
 const assetsURL = function(dep) {
@@ -66134,7 +67950,7 @@ const inflate_table = (type, lens, lens_index, codes, table, table_index, work, 
   let incr;
   let fill;
   let low;
-  let mask2;
+  let mask;
   let next;
   let base = null;
   let match;
@@ -66211,7 +68027,7 @@ const inflate_table = (type, lens, lens_index, codes, table, table_index, work, 
   drop = 0;
   low = -1;
   used = 1 << root2;
-  mask2 = used - 1;
+  mask = used - 1;
   if (type === LENS$1 && used > ENOUGH_LENS$1 || type === DISTS$1 && used > ENOUGH_DISTS$1) {
     return 1;
   }
@@ -66251,7 +68067,7 @@ const inflate_table = (type, lens, lens_index, codes, table, table_index, work, 
       }
       len = lens[lens_index + work[sym]];
     }
-    if (len > root2 && (huff & mask2) !== low) {
+    if (len > root2 && (huff & mask) !== low) {
       if (drop === 0) {
         drop = root2;
       }
@@ -66270,7 +68086,7 @@ const inflate_table = (type, lens, lens_index, codes, table, table_index, work, 
       if (type === LENS$1 && used > ENOUGH_LENS$1 || type === DISTS$1 && used > ENOUGH_DISTS$1) {
         return 1;
       }
-      low = huff & mask2;
+      low = huff & mask;
       table[low] = root2 << 24 | curr << 16 | next - table_index | 0;
     }
   }
@@ -68320,12 +70136,12 @@ class PngDecoder extends IOBuffer {
         delayDenominator: this._frames[i2].delayDenominator,
         data: this._apng.depth === 8 ? new Uint8Array(this._apng.width * this._apng.height * this._apng.channels) : new Uint16Array(this._apng.width * this._apng.height * this._apng.channels)
       };
-      const frame2 = this._frames.at(i2);
-      if (frame2) {
-        frame2.data = decodeInterlaceNull({
-          data: frame2.data,
-          width: frame2.width,
-          height: frame2.height,
+      const frame = this._frames.at(i2);
+      if (frame) {
+        frame.data = decodeInterlaceNull({
+          data: frame.data,
+          width: frame.width,
+          height: frame.height,
           channels: this._apng.channels,
           depth: this._apng.depth
         });
@@ -68335,26 +70151,26 @@ class PngDecoder extends IOBuffer {
         if (this._hasTransparency) {
           this._apng.transparency = this._transparency;
         }
-        if (i2 === 0 || frame2.xOffset === 0 && frame2.yOffset === 0 && frame2.width === this._png.width && frame2.height === this._png.height) {
-          newFrame.data = frame2.data;
+        if (i2 === 0 || frame.xOffset === 0 && frame.yOffset === 0 && frame.width === this._png.width && frame.height === this._png.height) {
+          newFrame.data = frame.data;
         } else {
           const prevFrame = this._apng.frames.at(i2 - 1);
-          this.disposeFrame(frame2, prevFrame, newFrame);
-          this.addFrameDataToCanvas(newFrame, frame2);
+          this.disposeFrame(frame, prevFrame, newFrame);
+          this.addFrameDataToCanvas(newFrame, frame);
         }
         this._apng.frames.push(newFrame);
       }
     }
     return this._apng;
   }
-  disposeFrame(frame2, prevFrame, imageFrame) {
-    switch (frame2.disposeOp) {
+  disposeFrame(frame, prevFrame, imageFrame) {
+    switch (frame.disposeOp) {
       case DisposeOpType.NONE:
         break;
       case DisposeOpType.BACKGROUND:
         for (let row = 0; row < this._png.height; row++) {
           for (let col = 0; col < this._png.width; col++) {
-            const index2 = (row * frame2.width + col) * this._png.channels;
+            const index2 = (row * frame.width + col) * this._png.channels;
             for (let channel = 0; channel < this._png.channels; channel++) {
               imageFrame.data[index2 + channel] = 0;
             }
@@ -68368,31 +70184,31 @@ class PngDecoder extends IOBuffer {
         throw new Error("Unknown disposeOp");
     }
   }
-  addFrameDataToCanvas(imageFrame, frame2) {
+  addFrameDataToCanvas(imageFrame, frame) {
     const maxValue = 1 << this._png.depth;
     const calculatePixelIndices = (row, col) => {
-      const index2 = ((row + frame2.yOffset) * this._png.width + frame2.xOffset + col) * this._png.channels;
-      const frameIndex = (row * frame2.width + col) * this._png.channels;
+      const index2 = ((row + frame.yOffset) * this._png.width + frame.xOffset + col) * this._png.channels;
+      const frameIndex = (row * frame.width + col) * this._png.channels;
       return { index: index2, frameIndex };
     };
-    switch (frame2.blendOp) {
+    switch (frame.blendOp) {
       case BlendOpType.SOURCE:
-        for (let row = 0; row < frame2.height; row++) {
-          for (let col = 0; col < frame2.width; col++) {
+        for (let row = 0; row < frame.height; row++) {
+          for (let col = 0; col < frame.width; col++) {
             const { index: index2, frameIndex } = calculatePixelIndices(row, col);
             for (let channel = 0; channel < this._png.channels; channel++) {
-              imageFrame.data[index2 + channel] = frame2.data[frameIndex + channel];
+              imageFrame.data[index2 + channel] = frame.data[frameIndex + channel];
             }
           }
         }
         break;
       case BlendOpType.OVER:
-        for (let row = 0; row < frame2.height; row++) {
-          for (let col = 0; col < frame2.width; col++) {
+        for (let row = 0; row < frame.height; row++) {
+          for (let col = 0; col < frame.width; col++) {
             const { index: index2, frameIndex } = calculatePixelIndices(row, col);
             for (let channel = 0; channel < this._png.channels; channel++) {
-              const sourceAlpha = frame2.data[frameIndex + this._png.channels - 1] / maxValue;
-              const foregroundValue = channel % (this._png.channels - 1) === 0 ? 1 : frame2.data[frameIndex + channel];
+              const sourceAlpha = frame.data[frameIndex + this._png.channels - 1] / maxValue;
+              const foregroundValue = channel % (this._png.channels - 1) === 0 ? 1 : frame.data[frameIndex + channel];
               const value = Math.floor(sourceAlpha * foregroundValue + (1 - sourceAlpha) * imageFrame.data[index2 + channel]);
               imageFrame.data[index2 + channel] += value;
             }
@@ -75049,7 +76865,7 @@ function(t3) {
   var h2 = l2.getContext("2d");
   h2.fillStyle = "#fff", h2.fillRect(0, 0, l2.width, l2.height);
   var f2 = { ignoreMouse: true, ignoreAnimation: true, ignoreDimensions: true }, d2 = this;
-  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-Wi0N5bA9.js"), true ? [] : void 0)).catch(function(t4) {
+  return (i.canvg ? Promise.resolve(i.canvg) : __vitePreload(() => import("./index.es-BJ-JFpKD.js"), true ? [] : void 0)).catch(function(t4) {
     return Promise.reject(new Error("Could not load canvg: " + t4));
   }).then(function(t4) {
     return t4.default ? t4.default : t4;
@@ -75915,38 +77731,152 @@ function formatDate$3(ts) {
     day: "numeric"
   });
 }
+function getBengaliDate() {
+  return (/* @__PURE__ */ new Date()).toLocaleDateString("bn-BD", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric"
+  });
+}
 function getInitials(name) {
   return name.split(" ").slice(0, 2).map((w3) => w3[0]).join("").toUpperCase();
 }
-const QUICK_LINKS = [
-  {
-    href: "/chat",
-    icon: MessageCircle,
-    label: "গ্রুপ চ্যাট",
-    color: "bg-primary/10 text-primary"
-  },
-  {
-    href: "/committee",
-    icon: Users,
-    label: "কমিটি",
-    color: "bg-accent/10 text-accent"
-  },
-  {
-    href: "/notices",
-    icon: Bell,
-    label: "নোটিশ বোর্ড",
-    color: "bg-chart-2/10 text-chart-2"
-  },
-  {
-    href: "/gallery",
-    icon: Image,
-    label: "গ্যালারি",
-    color: "bg-chart-3/10 text-chart-3"
-  }
-];
+function getDaysSince(ts) {
+  const ms = Number(ts / 1000000n);
+  const diff = Date.now() - ms;
+  return Math.max(0, Math.floor(diff / (1e3 * 60 * 60 * 24)));
+}
+function DashboardHero({ member }) {
+  const [visible, setVisible] = reactExports.useState(false);
+  reactExports.useEffect(() => {
+    const t3 = setTimeout(() => setVisible(true), 50);
+    return () => clearTimeout(t3);
+  }, []);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "div",
+    {
+      className: "relative overflow-hidden rounded-2xl text-white",
+      style: {
+        background: "linear-gradient(135deg, oklch(0.28 0.12 155) 0%, oklch(0.22 0.08 160) 40%, oklch(0.18 0.06 22) 100%)"
+      },
+      "data-ocid": "dashboard.hero_section",
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "div",
+          {
+            className: "absolute -top-10 -right-10 w-40 h-40 rounded-full opacity-10",
+            style: { background: "oklch(0.8 0.15 85)" }
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "div",
+          {
+            className: "absolute bottom-0 left-0 w-32 h-32 rounded-full opacity-5",
+            style: { background: "oklch(0.7 0.2 22)" }
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "div",
+          {
+            className: "absolute top-1/2 right-1/4 w-16 h-16 rounded-full opacity-10",
+            style: { background: "oklch(0.9 0.1 85)" }
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "div",
+          {
+            className: `relative z-10 px-6 py-8 transition-all duration-700 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`,
+            children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col sm:flex-row items-start sm:items-center gap-5", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative shrink-0", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                  Avatar,
+                  {
+                    className: "w-20 h-20 border-4 shadow-2xl",
+                    style: { borderColor: "oklch(0.72 0.15 85 / 0.8)" },
+                    children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        AvatarImage,
+                        {
+                          src: member.photoBlob.getDirectURL(),
+                          alt: member.fullName
+                        }
+                      ),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        AvatarFallback,
+                        {
+                          className: "text-2xl font-bold",
+                          style: { background: "oklch(0.38 0.12 155)", color: "white" },
+                          children: getInitials(member.fullName)
+                        }
+                      )
+                    ]
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "absolute -bottom-1 -right-1 w-6 h-6 rounded-full border-2 border-white bg-green-400 flex items-center justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "w-2.5 h-2.5 rounded-full bg-green-600" }) })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-white/70 text-sm mb-0.5", children: getBengaliDate() }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("h1", { className: "text-2xl sm:text-3xl font-display font-bold leading-tight", children: [
+                  "স্বাগতম, ",
+                  member.fullName,
+                  "!"
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap items-center gap-2 mt-2", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                    Badge,
+                    {
+                      className: "font-semibold border-0 text-xs",
+                      style: {
+                        background: "oklch(0.72 0.15 85 / 0.25)",
+                        color: "oklch(0.9 0.1 85)"
+                      },
+                      children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(Star, { className: "w-3 h-3 mr-1" }),
+                        member.designation
+                      ]
+                    }
+                  ),
+                  member.status === MemberStatus.approved && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                    Badge,
+                    {
+                      className: "font-semibold border-0 text-xs",
+                      style: {
+                        background: "oklch(0.45 0.15 155 / 0.4)",
+                        color: "oklch(0.85 0.1 155)"
+                      },
+                      children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(Shield, { className: "w-3 h-3 mr-1" }),
+                        "অনুমোদিত সদস্য"
+                      ]
+                    }
+                  ),
+                  member.rank > 0n && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                    Badge,
+                    {
+                      className: "font-semibold border-0 text-xs",
+                      style: {
+                        background: "oklch(0.49 0.21 22 / 0.3)",
+                        color: "oklch(0.85 0.1 22)"
+                      },
+                      children: [
+                        "ক্রম #",
+                        Number(member.rank)
+                      ]
+                    }
+                  )
+                ] })
+              ] })
+            ] })
+          }
+        )
+      ]
+    }
+  );
+}
 function ProfileCard({ member }) {
   const [pdfLoading, setPdfLoading] = reactExports.useState(false);
-  const photoUrl = member.photoBlob.getDirectURL();
+  const isApproved = member.status === MemberStatus.approved;
   async function handlePdfDownload() {
     setPdfLoading(true);
     try {
@@ -75955,173 +77885,208 @@ function ProfileCard({ member }) {
       setPdfLoading(false);
     }
   }
-  const isApproved = member.status === MemberStatus.approved;
-  const isPending = member.status === MemberStatus.pending;
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-6", children: [
-    isPending && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "div",
-      {
-        className: "border border-yellow-400/50 bg-yellow-50/50 rounded-xl p-4 flex items-start gap-3",
-        "data-ocid": "dashboard.pending_warning",
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-2xl", children: "⏳" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-semibold text-foreground", children: "আবেদন পর্যালোচনাধীন" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-muted-foreground mt-1", children: "আপনার সদস্যপদের আবেদন পর্যালোচনাধীন রয়েছে। অনুমোদনের পর আপনি সম্পূর্ণ অ্যাক্সেস পাবেন।" })
-          ] })
-        ]
-      }
-    ),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      Card,
-      {
-        className: "overflow-hidden shadow-md",
-        "data-ocid": "dashboard.profile_card",
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-24 bg-gradient-to-r from-primary to-primary/70" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "pt-0 px-6 pb-6", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 -mt-12 mb-6", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative", children: [
-                photoUrl ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "img",
-                  {
-                    src: photoUrl,
-                    alt: member.fullName,
-                    className: "w-24 h-24 rounded-full border-4 border-card object-cover shadow-md"
-                  }
-                ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-24 h-24 rounded-full border-4 border-card bg-primary flex items-center justify-center shadow-md", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-primary-foreground font-display text-2xl font-bold", children: getInitials(member.fullName) }) }),
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    Card,
+    {
+      className: "overflow-hidden shadow-md",
+      "data-ocid": "dashboard.profile_card",
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-3 bg-gradient-to-r from-primary via-primary/80 to-accent" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "p-6", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col sm:flex-row gap-6", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center gap-3 shrink-0", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(Avatar, { className: "w-28 h-28 border-4 border-primary/30 shadow-lg", children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "span",
+                  AvatarImage,
                   {
-                    className: `absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-card ${isApproved ? "bg-green-500" : isPending ? "bg-yellow-400" : "bg-destructive"}`
+                    src: member.photoBlob.getDirectURL(),
+                    alt: member.fullName
                   }
-                )
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(AvatarFallback, { className: "bg-primary text-primary-foreground text-3xl font-bold", children: getInitials(member.fullName) })
               ] }),
               /* @__PURE__ */ jsxRuntimeExports.jsx(
                 Badge,
                 {
-                  className: `text-sm font-semibold px-4 py-1 ${isApproved ? "bg-green-100 text-green-800 border-green-300" : "bg-yellow-100 text-yellow-800 border-yellow-300"}`,
+                  className: `text-xs font-bold px-3 py-1 ${isApproved ? "bg-green-100 text-green-800 border-green-300" : "bg-amber-100 text-amber-800 border-amber-300"}`,
                   variant: "outline",
                   "data-ocid": "dashboard.status_badge",
-                  children: isApproved ? "✅ অনুমোদিত" : "⏳ অনুমোদন প্রক্রিয়াধীন"
+                  children: isApproved ? "✅ অনুমোদিত" : "⏳ পর্যালোচনাধীন"
                 }
               )
             ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-5", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-2xl font-display font-bold text-foreground", children: member.fullName }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 min-w-0", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-2xl font-display font-bold text-foreground mb-1", children: member.fullName }),
               /* @__PURE__ */ jsxRuntimeExports.jsx(
                 Badge,
                 {
-                  className: "mt-2 bg-primary text-primary-foreground font-semibold",
+                  className: "bg-primary text-primary-foreground font-semibold mb-4",
                   "data-ocid": "dashboard.designation_badge",
                   children: member.designation
                 }
-              )
-            ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-6", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 text-muted-foreground", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Mail, { className: "w-4 h-4 shrink-0" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "truncate", children: member.email })
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 text-muted-foreground", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Phone, { className: "w-4 h-4 shrink-0" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: member.phone })
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-start gap-2 text-muted-foreground sm:col-span-2", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(MapPin, { className: "w-4 h-4 shrink-0 mt-0.5" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "break-words", children: member.fullAddress })
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 text-muted-foreground", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Calendar, { className: "w-4 h-4 shrink-0" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
-                  "সদস্য হয়েছেন: ",
-                  formatDate$3(member.registeredAt)
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm mb-4", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 text-muted-foreground", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Mail, { className: "w-4 h-4 shrink-0 text-primary" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "truncate", children: member.email })
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 text-muted-foreground", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Phone, { className: "w-4 h-4 shrink-0 text-primary" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: member.phone })
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-start gap-2 text-muted-foreground sm:col-span-2", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(MapPin, { className: "w-4 h-4 shrink-0 mt-0.5 text-primary" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "break-words", children: member.fullAddress })
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 text-muted-foreground", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Calendar, { className: "w-4 h-4 shrink-0 text-primary" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+                    "যোগদান: ",
+                    formatDate$3(member.registeredAt)
+                  ] })
+                ] }),
+                member.approvedAt && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 text-muted-foreground", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(UserCheck, { className: "w-4 h-4 shrink-0 text-green-600" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+                    "অনুমোদন: ",
+                    formatDate$3(member.approvedAt)
+                  ] })
                 ] })
               ] }),
-              member.approvedAt !== void 0 && member.approvedAt !== null && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 text-muted-foreground", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(UserCheck, { className: "w-4 h-4 shrink-0" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
-                  "অনুমোদন: ",
-                  formatDate$3(member.approvedAt)
+              isApproved && member.adminSignature && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 p-3 rounded-lg border border-amber-200 bg-amber-50/60 flex items-center gap-3", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-2xl", children: "🎖️" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs font-bold text-amber-700", children: "এডমিন অনুমোদন সত্যায়িত" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-amber-600 italic", children: member.adminSignature })
+                ] })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                Button,
+                {
+                  type: "button",
+                  onClick: handlePdfDownload,
+                  disabled: pdfLoading,
+                  className: "bg-primary hover:bg-primary/90 text-primary-foreground font-bold gap-2 shadow-md",
+                  "data-ocid": "dashboard.pdf_download_button",
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(FileDown, { className: "w-4 h-4" }),
+                    pdfLoading ? "তৈরি হচ্ছে..." : "সদস্যপদ কার্ড PDF"
+                  ]
+                }
+              )
+            ] })
+          ] }),
+          member.joinReason && /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "div",
+            {
+              className: "mt-5 p-4 rounded-xl bg-muted/50 border-l-4 border-accent",
+              "data-ocid": "dashboard.join_reason_card",
+              children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-start gap-3", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Quote, { className: "w-5 h-5 text-accent shrink-0 mt-0.5" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs font-bold text-muted-foreground mb-1", children: "কেন ছাত্রদলে যোগ দিয়েছেন" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-foreground text-sm italic leading-relaxed", children: member.joinReason })
                 ] })
               ] })
-            ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              Button,
+            }
+          )
+        ] })
+      ]
+    }
+  );
+}
+function PendingState({ member }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-6", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        className: "relative overflow-hidden rounded-2xl p-6 text-center",
+        style: {
+          background: "linear-gradient(135deg, oklch(0.62 0.15 85 / 0.12) 0%, oklch(0.85 0.1 85 / 0.06) 100%)"
+        },
+        "data-ocid": "dashboard.pending_state",
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "pending-pulse text-7xl mb-4", children: "⏳" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-2xl font-display font-bold text-foreground mb-2", children: "অপেক্ষায় আছেন" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-muted-foreground leading-relaxed max-w-sm mx-auto", children: "আপনার নিবন্ধন পর্যালোচনা করা হচ্ছে। অ্যাডমিন অনুমোদন দিলে আপনি সম্পূর্ণ ড্যাশবোর্ড অ্যাক্সেস করতে পারবেন।" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 flex justify-center gap-2", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "div",
               {
-                type: "button",
-                onClick: handlePdfDownload,
-                disabled: pdfLoading,
-                className: "w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground font-semibold gap-2",
-                "data-ocid": "dashboard.pdf_download_button",
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(FileDown, { className: "w-4 h-4" }),
-                  pdfLoading ? "তৈরি হচ্ছে..." : "সদস্যপদ কার্ড ডাউনলোড (PDF)"
-                ]
+                className: "w-2 h-2 rounded-full bg-amber-400 pending-dot",
+                style: { animationDelay: "0ms" }
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "div",
+              {
+                className: "w-2 h-2 rounded-full bg-amber-400 pending-dot",
+                style: { animationDelay: "300ms" }
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "div",
+              {
+                className: "w-2 h-2 rounded-full bg-amber-400 pending-dot",
+                style: { animationDelay: "600ms" }
               }
             )
           ] })
         ]
       }
     ),
-    member.joinReason && /* @__PURE__ */ jsxRuntimeExports.jsx(
-      Card,
-      {
-        className: "border-l-4 border-l-accent bg-card",
-        "data-ocid": "dashboard.join_reason_card",
-        children: /* @__PURE__ */ jsxRuntimeExports.jsx(CardContent, { className: "pt-5 pb-5 px-6", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-start gap-3", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Quote, { className: "w-6 h-6 text-accent shrink-0 mt-0.5" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm font-semibold text-muted-foreground mb-1", children: "কেন ছাত্রদলে যোগ দিয়েছেন" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-foreground italic leading-relaxed", children: member.joinReason })
-          ] })
-        ] }) })
-      }
-    )
+    /* @__PURE__ */ jsxRuntimeExports.jsx(ProfileCard, { member })
   ] });
 }
-function QuickLinks() {
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "data-ocid": "dashboard.quick_links_section", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-lg font-display font-bold text-foreground mb-4", children: "দ্রুত যোগাযোগ" }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid grid-cols-2 gap-3", children: QUICK_LINKS.map(({ href, icon: Icon2, label, color: color2 }) => /* @__PURE__ */ jsxRuntimeExports.jsx(
-      Link,
-      {
-        to: href,
-        "data-ocid": `dashboard.quick_link.${label}`,
-        children: /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { className: "hover:shadow-md transition-smooth cursor-pointer hover:scale-[1.02]", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "flex flex-col items-center justify-center py-6 gap-3", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `p-3 rounded-full ${color2}`, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Icon2, { className: "w-5 h-5" }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm font-semibold text-foreground", children: label })
-        ] }) })
-      },
-      href
-    )) })
-  ] });
-}
-function NoProfileState() {
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(
-    Card,
+function GroupChatCTA({ messageCount }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(Link, { to: "/chat", "data-ocid": "dashboard.chat_cta_link", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "div",
     {
-      className: "text-center py-12 px-6",
-      "data-ocid": "dashboard.no_profile_state",
-      children: /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "pt-0", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx(UserPlus, { className: "w-8 h-8 text-muted-foreground" }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-lg font-display font-bold text-foreground mb-2", children: "প্রোফাইল তৈরি করুন" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-muted-foreground mb-6", children: "আপনি এখনও সদস্যতার জন্য আবেদন করেননি। নিবন্ধন করতে নিচের বাটনে ক্লিক করুন।" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Link, { to: "/register", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      className: "relative overflow-hidden rounded-2xl p-5 flex items-center justify-between gap-4 cursor-pointer group",
+      style: {
+        background: "linear-gradient(135deg, oklch(0.35 0.14 155) 0%, oklch(0.28 0.1 160) 100%)"
+      },
+      "data-ocid": "dashboard.chat_cta_section",
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "div",
+          {
+            className: "absolute -right-4 -bottom-4 w-24 h-24 rounded-full opacity-10",
+            style: { background: "oklch(0.8 0.1 85)" }
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "div",
+            {
+              className: "w-14 h-14 rounded-2xl flex items-center justify-center chat-float shadow-lg",
+              style: { background: "oklch(0.45 0.18 155 / 0.5)" },
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(MessageCircle, { className: "w-7 h-7 text-white" })
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-white font-display font-bold text-lg", children: "গ্রুপ চ্যাটে যোগ দিন" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-white/70 text-sm", children: [
+              messageCount,
+              " টি বার্তা রয়েছে"
+            ] })
+          ] })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
           Button,
           {
             type: "button",
-            className: "bg-primary text-primary-foreground font-semibold gap-2",
-            "data-ocid": "dashboard.register_now_button",
+            className: "bg-white text-primary font-bold gap-2 group-hover:bg-white/90 shadow-md shrink-0",
+            "data-ocid": "dashboard.chat_join_button",
             children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(UserPlus, { className: "w-4 h-4" }),
-              "এখনই নিবন্ধন করুন"
+              /* @__PURE__ */ jsxRuntimeExports.jsx(MessageCircle, { className: "w-4 h-4" }),
+              "যোগ দিন"
             ]
           }
-        ) })
-      ] })
+        )
+      ]
     }
-  );
+  ) });
 }
 function NotLoggedInState() {
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
@@ -76130,7 +78095,16 @@ function NotLoggedInState() {
       className: "flex flex-col items-center justify-center min-h-[50vh] text-center px-4",
       "data-ocid": "dashboard.not_logged_in_state",
       children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-20 h-20 rounded-full bg-muted flex items-center justify-center mb-6", children: /* @__PURE__ */ jsxRuntimeExports.jsx(LogIn, { className: "w-10 h-10 text-muted-foreground" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "div",
+          {
+            className: "w-24 h-24 rounded-full flex items-center justify-center mb-6 shadow-xl",
+            style: {
+              background: "linear-gradient(135deg, oklch(0.38 0.12 155) 0%, oklch(0.49 0.21 22) 100%)"
+            },
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx(LogIn, { className: "w-12 h-12 text-white" })
+          }
+        ),
         /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-2xl font-display font-bold text-foreground mb-3", children: "লগইন প্রয়োজন" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-muted-foreground mb-8 max-w-sm", children: "ড্যাশবোর্ড দেখতে আপনাকে প্রথমে লগইন করতে হবে।" }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col sm:flex-row gap-3", children: [
@@ -76138,7 +78112,7 @@ function NotLoggedInState() {
             Button,
             {
               type: "button",
-              className: "bg-primary text-primary-foreground font-semibold gap-2 w-full sm:w-auto",
+              className: "bg-primary text-primary-foreground font-bold gap-2 w-full sm:w-auto",
               "data-ocid": "dashboard.login_button",
               children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx(LogIn, { className: "w-4 h-4" }),
@@ -76164,28 +78138,66 @@ function NotLoggedInState() {
     }
   );
 }
+function NoProfileState() {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    Card,
+    {
+      className: "text-center py-14 px-6 shadow-md",
+      "data-ocid": "dashboard.no_profile_state",
+      children: /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "pt-0", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-5", children: /* @__PURE__ */ jsxRuntimeExports.jsx(UserPlus, { className: "w-10 h-10 text-primary" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-xl font-display font-bold text-foreground mb-2", children: "প্রোফাইল তৈরি করুন" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-muted-foreground mb-6", children: "আপনি এখনো সদস্যতার জন্য আবেদন করেননি। নিবন্ধন করতে নিচের বাটনে ক্লিক করুন।" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Link, { to: "/register", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          Button,
+          {
+            type: "button",
+            className: "bg-primary text-primary-foreground font-bold gap-2",
+            "data-ocid": "dashboard.register_now_button",
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(UserPlus, { className: "w-4 h-4" }),
+              "এখনই নিবন্ধন করুন"
+            ]
+          }
+        ) })
+      ] })
+    }
+  );
+}
 function DashboardPage() {
   const { isLoggedIn } = useAuth();
-  const { data: member, isLoading } = useMyProfile();
+  const { data: member, isLoading: profileLoading } = useMyProfile();
+  const { data: allMembers = [], isLoading: membersLoading } = useMembers();
+  const { data: stats, isLoading: statsLoading } = useMemberStats();
+  const { data: chatMessages = [] } = useChatMessages(10n);
+  const approvedMembers = allMembers.filter(
+    (m2) => m2.status === MemberStatus.approved
+  );
+  const totalApproved = stats ? Number(stats.total) : approvedMembers.length;
+  const myRank = member ? Number(member.rank) : 0;
+  const daysSince = member ? getDaysSince(member.registeredAt) : 0;
+  const isApproved = (member == null ? void 0 : member.status) === MemberStatus.approved;
+  const isPending = (member == null ? void 0 : member.status) === MemberStatus.pending;
+  const isLoading = profileLoading || statsLoading;
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(Layout, { children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       "div",
       {
-        className: "w-full py-5 px-4 hero-red",
-        "data-ocid": "dashboard.join_cta_banner",
+        className: "w-full py-4 px-4",
         style: {
-          background: "linear-gradient(135deg, oklch(0.49 0.21 22) 0%, oklch(0.38 0.22 18) 60%, oklch(0.30 0.18 22) 100%)"
+          background: "linear-gradient(90deg, oklch(0.38 0.2 22) 0%, oklch(0.45 0.22 18) 100%)"
         },
-        children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4", children: [
+        "data-ocid": "dashboard.join_cta_banner",
+        children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-white text-xl font-display font-bold leading-snug", children: "আপনি কি আমাদের ছাত্রদলে যোগ দিতে চান?" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-white/80 text-sm mt-1", children: "বাংলাদেশ জাতীয়তাবাদী ছাত্রদল — ২নং কপিলমুনি ইউনিয়ন শাখা" })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-white font-display font-bold text-lg leading-snug", children: "আপনি কি আমাদের ছাত্রদলে যোগ দিতে চান?" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-white/75 text-sm", children: "বাংলাদেশ জাতীয়তাবাদী ছাত্রদল — ২নং কপিলমুনি ইউনিয়ন শাখা" })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(Link, { to: "/register", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
             Button,
             {
               type: "button",
-              className: "bg-white text-accent hover:bg-white/90 font-bold gap-2 shrink-0 shadow-md",
+              className: "bg-white text-accent hover:bg-white/90 font-bold gap-2 shrink-0 shadow",
               "data-ocid": "dashboard.cta_join_button",
               children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx(UserPlus, { className: "w-4 h-4" }),
@@ -76196,18 +78208,36 @@ function DashboardPage() {
         ] })
       }
     ),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "max-w-4xl mx-auto px-4 py-8", children: !isLoggedIn ? /* @__PURE__ */ jsxRuntimeExports.jsx(NotLoggedInState, {}) : isLoading ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-6", "data-ocid": "dashboard.loading_state", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Skeleton, { className: "h-48 w-full rounded-xl" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Skeleton, { className: "h-32 w-full rounded-xl" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-3", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Skeleton, { className: "h-28 rounded-xl" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Skeleton, { className: "h-28 rounded-xl" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Skeleton, { className: "h-28 rounded-xl" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Skeleton, { className: "h-28 rounded-xl" })
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "max-w-5xl mx-auto px-4 py-8", children: !isLoggedIn ? /* @__PURE__ */ jsxRuntimeExports.jsx(NotLoggedInState, {}) : isLoading ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-6", "data-ocid": "dashboard.loading_state", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Skeleton, { className: "h-36 rounded-2xl" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid grid-cols-2 lg:grid-cols-4 gap-3", children: [1, 2, 3, 4].map((i2) => /* @__PURE__ */ jsxRuntimeExports.jsx(Skeleton, { className: "h-24 rounded-xl" }, i2)) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Skeleton, { className: "h-64 rounded-2xl" })
+    ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-6", children: [
+      member && /* @__PURE__ */ jsxRuntimeExports.jsx(DashboardHero, { member }),
+      member && /* @__PURE__ */ jsxRuntimeExports.jsx(
+        DashboardStats,
+        {
+          totalMembers: totalApproved,
+          chatCount: chatMessages.length,
+          rank: myRank,
+          daysSinceJoining: daysSince,
+          loading: statsLoading || membersLoading
+        }
+      ),
+      !member ? /* @__PURE__ */ jsxRuntimeExports.jsx(NoProfileState, {}) : isPending ? /* @__PURE__ */ jsxRuntimeExports.jsx(PendingState, { member }) : isApproved ? /* @__PURE__ */ jsxRuntimeExports.jsx(ProfileCard, { member }) : null,
+      isApproved && /* @__PURE__ */ jsxRuntimeExports.jsx(GroupChatCTA, { messageCount: chatMessages.length }),
+      isApproved && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", "data-ocid": "dashboard.members_section", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-1 h-8 rounded-full bg-primary" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-xl font-display font-bold text-foreground", children: "আমাদের সদস্যবৃন্দ" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(Badge, { variant: "secondary", className: "ml-auto font-semibold", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Users, { className: "w-3 h-3 mr-1" }),
+            approvedMembers.length,
+            " জন"
+          ] })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(MemberGrid, { members: allMembers, loading: membersLoading })
       ] })
-    ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-8", children: [
-      member ? /* @__PURE__ */ jsxRuntimeExports.jsx(ProfileCard, { member }) : /* @__PURE__ */ jsxRuntimeExports.jsx(NoProfileState, {}),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(QuickLinks, {})
     ] }) })
   ] });
 }
@@ -76422,8468 +78452,857 @@ function GalleryPage() {
     )
   ] });
 }
-const LayoutGroupContext = reactExports.createContext({});
-function useConstant(init) {
+const cssAnimations = `
+  @keyframes slideInLeft { from { opacity: 0; transform: translateX(-50px); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes slideInRight { from { opacity: 0; transform: translateX(50px); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+  @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+  @keyframes glow { 0%, 100% { filter: drop-shadow(0 0 10px rgba(0,106,78,0.5)); } 50% { filter: drop-shadow(0 0 20px rgba(0,106,78,0.9)); } }
+  @keyframes particleFloat { 0% { transform: translateY(0) rotate(0deg); opacity: 0.7; } 100% { transform: translateY(-100vh) rotate(360deg); opacity: 0; } }
+  @keyframes shimmer { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
+  @keyframes pulseBorder { 0%, 100% { box-shadow: 0 0 0 0 rgba(220,20,60,0.4); } 50% { box-shadow: 0 0 0 12px rgba(220,20,60,0); } }
+  @keyframes rotateIn { from { opacity: 0; transform: rotate(-10deg) scale(0.8); } to { opacity: 1; transform: rotate(0deg) scale(1); } }
+`;
+function AnimatedCounter({
+  target,
+  suffix: suffix2 = "",
+  duration = 2e3
+}) {
+  const [count2, setCount] = reactExports.useState(0);
   const ref = reactExports.useRef(null);
-  if (ref.current === null) {
-    ref.current = init();
-  }
-  return ref.current;
-}
-const isBrowser$1 = typeof window !== "undefined";
-const useIsomorphicLayoutEffect$1 = isBrowser$1 ? reactExports.useLayoutEffect : reactExports.useEffect;
-const PresenceContext = /* @__PURE__ */ reactExports.createContext(null);
-function addUniqueItem(arr, item) {
-  if (arr.indexOf(item) === -1)
-    arr.push(item);
-}
-function removeItem(arr, item) {
-  const index2 = arr.indexOf(item);
-  if (index2 > -1)
-    arr.splice(index2, 1);
-}
-const clamp = (min2, max2, v2) => {
-  if (v2 > max2)
-    return max2;
-  if (v2 < min2)
-    return min2;
-  return v2;
-};
-let invariant = () => {
-};
-const MotionGlobalConfig = {};
-const isNumericalString = (v2) => /^-?(?:\d+(?:\.\d+)?|\.\d+)$/u.test(v2);
-function isObject$1(value) {
-  return typeof value === "object" && value !== null;
-}
-const isZeroValueString = (v2) => /^0[^.\s]+$/u.test(v2);
-// @__NO_SIDE_EFFECTS__
-function memo(callback) {
-  let result;
-  return () => {
-    if (result === void 0)
-      result = callback();
-    return result;
-  };
-}
-const noop = /* @__NO_SIDE_EFFECTS__ */ (any) => any;
-const combineFunctions = (a2, b2) => (v2) => b2(a2(v2));
-const pipe = (...transformers) => transformers.reduce(combineFunctions);
-const progress = /* @__NO_SIDE_EFFECTS__ */ (from, to, value) => {
-  const toFromDifference = to - from;
-  return toFromDifference === 0 ? 1 : (value - from) / toFromDifference;
-};
-class SubscriptionManager {
-  constructor() {
-    this.subscriptions = [];
-  }
-  add(handler) {
-    addUniqueItem(this.subscriptions, handler);
-    return () => removeItem(this.subscriptions, handler);
-  }
-  notify(a2, b2, c2) {
-    const numSubscriptions = this.subscriptions.length;
-    if (!numSubscriptions)
-      return;
-    if (numSubscriptions === 1) {
-      this.subscriptions[0](a2, b2, c2);
-    } else {
-      for (let i2 = 0; i2 < numSubscriptions; i2++) {
-        const handler = this.subscriptions[i2];
-        handler && handler(a2, b2, c2);
-      }
-    }
-  }
-  getSize() {
-    return this.subscriptions.length;
-  }
-  clear() {
-    this.subscriptions.length = 0;
-  }
-}
-const secondsToMilliseconds = /* @__NO_SIDE_EFFECTS__ */ (seconds) => seconds * 1e3;
-const millisecondsToSeconds = /* @__NO_SIDE_EFFECTS__ */ (milliseconds) => milliseconds / 1e3;
-function velocityPerSecond(velocity, frameDuration) {
-  return frameDuration ? velocity * (1e3 / frameDuration) : 0;
-}
-const calcBezier = (t3, a1, a2) => (((1 - 3 * a2 + 3 * a1) * t3 + (3 * a2 - 6 * a1)) * t3 + 3 * a1) * t3;
-const subdivisionPrecision = 1e-7;
-const subdivisionMaxIterations = 12;
-function binarySubdivide(x3, lowerBound, upperBound, mX1, mX2) {
-  let currentX;
-  let currentT;
-  let i2 = 0;
-  do {
-    currentT = lowerBound + (upperBound - lowerBound) / 2;
-    currentX = calcBezier(currentT, mX1, mX2) - x3;
-    if (currentX > 0) {
-      upperBound = currentT;
-    } else {
-      lowerBound = currentT;
-    }
-  } while (Math.abs(currentX) > subdivisionPrecision && ++i2 < subdivisionMaxIterations);
-  return currentT;
-}
-function cubicBezier2(mX1, mY1, mX2, mY2) {
-  if (mX1 === mY1 && mX2 === mY2)
-    return noop;
-  const getTForX = (aX) => binarySubdivide(aX, 0, 1, mX1, mX2);
-  return (t3) => t3 === 0 || t3 === 1 ? t3 : calcBezier(getTForX(t3), mY1, mY2);
-}
-const mirrorEasing = (easing) => (p2) => p2 <= 0.5 ? easing(2 * p2) / 2 : (2 - easing(2 * (1 - p2))) / 2;
-const reverseEasing = (easing) => (p2) => 1 - easing(1 - p2);
-const backOut = /* @__PURE__ */ cubicBezier2(0.33, 1.53, 0.69, 0.99);
-const backIn = /* @__PURE__ */ reverseEasing(backOut);
-const backInOut = /* @__PURE__ */ mirrorEasing(backIn);
-const anticipate = (p2) => p2 >= 1 ? 1 : (p2 *= 2) < 1 ? 0.5 * backIn(p2) : 0.5 * (2 - Math.pow(2, -10 * (p2 - 1)));
-const circIn = (p2) => 1 - Math.sin(Math.acos(p2));
-const circOut = reverseEasing(circIn);
-const circInOut = mirrorEasing(circIn);
-const easeIn = /* @__PURE__ */ cubicBezier2(0.42, 0, 1, 1);
-const easeOut = /* @__PURE__ */ cubicBezier2(0, 0, 0.58, 1);
-const easeInOut = /* @__PURE__ */ cubicBezier2(0.42, 0, 0.58, 1);
-const isEasingArray = (ease2) => {
-  return Array.isArray(ease2) && typeof ease2[0] !== "number";
-};
-const isBezierDefinition = (easing) => Array.isArray(easing) && typeof easing[0] === "number";
-const easingLookup = {
-  linear: noop,
-  easeIn,
-  easeInOut,
-  easeOut,
-  circIn,
-  circInOut,
-  circOut,
-  backIn,
-  backInOut,
-  backOut,
-  anticipate
-};
-const isValidEasing = (easing) => {
-  return typeof easing === "string";
-};
-const easingDefinitionToFunction = (definition) => {
-  if (isBezierDefinition(definition)) {
-    invariant(definition.length === 4);
-    const [x1, y1, x22, y2] = definition;
-    return cubicBezier2(x1, y1, x22, y2);
-  } else if (isValidEasing(definition)) {
-    return easingLookup[definition];
-  }
-  return definition;
-};
-const stepsOrder = [
-  "setup",
-  // Compute
-  "read",
-  // Read
-  "resolveKeyframes",
-  // Write/Read/Write/Read
-  "preUpdate",
-  // Compute
-  "update",
-  // Compute
-  "preRender",
-  // Compute
-  "render",
-  // Write
-  "postRender"
-  // Compute
-];
-function createRenderStep(runNextFrame, stepName) {
-  let thisFrame = /* @__PURE__ */ new Set();
-  let nextFrame = /* @__PURE__ */ new Set();
-  let isProcessing = false;
-  let flushNextFrame = false;
-  const toKeepAlive = /* @__PURE__ */ new WeakSet();
-  let latestFrameData = {
-    delta: 0,
-    timestamp: 0,
-    isProcessing: false
-  };
-  function triggerCallback(callback) {
-    if (toKeepAlive.has(callback)) {
-      step.schedule(callback);
-      runNextFrame();
-    }
-    callback(latestFrameData);
-  }
-  const step = {
-    /**
-     * Schedule a process to run on the next frame.
-     */
-    schedule: (callback, keepAlive = false, immediate = false) => {
-      const addToCurrentFrame = immediate && isProcessing;
-      const queue = addToCurrentFrame ? thisFrame : nextFrame;
-      if (keepAlive)
-        toKeepAlive.add(callback);
-      queue.add(callback);
-      return callback;
-    },
-    /**
-     * Cancel the provided callback from running on the next frame.
-     */
-    cancel: (callback) => {
-      nextFrame.delete(callback);
-      toKeepAlive.delete(callback);
-    },
-    /**
-     * Execute all schedule callbacks.
-     */
-    process: (frameData2) => {
-      latestFrameData = frameData2;
-      if (isProcessing) {
-        flushNextFrame = true;
-        return;
-      }
-      isProcessing = true;
-      const prevFrame = thisFrame;
-      thisFrame = nextFrame;
-      nextFrame = prevFrame;
-      thisFrame.forEach(triggerCallback);
-      thisFrame.clear();
-      isProcessing = false;
-      if (flushNextFrame) {
-        flushNextFrame = false;
-        step.process(frameData2);
-      }
-    }
-  };
-  return step;
-}
-const maxElapsed = 40;
-function createRenderBatcher(scheduleNextBatch, allowKeepAlive) {
-  let runNextFrame = false;
-  let useDefaultElapsed = true;
-  const state = {
-    delta: 0,
-    timestamp: 0,
-    isProcessing: false
-  };
-  const flagRunNextFrame = () => runNextFrame = true;
-  const steps = stepsOrder.reduce((acc, key) => {
-    acc[key] = createRenderStep(flagRunNextFrame);
-    return acc;
-  }, {});
-  const { setup, read, resolveKeyframes, preUpdate, update, preRender, render, postRender } = steps;
-  const processBatch = () => {
-    const useManualTiming = MotionGlobalConfig.useManualTiming;
-    const timestamp = useManualTiming ? state.timestamp : performance.now();
-    runNextFrame = false;
-    if (!useManualTiming) {
-      state.delta = useDefaultElapsed ? 1e3 / 60 : Math.max(Math.min(timestamp - state.timestamp, maxElapsed), 1);
-    }
-    state.timestamp = timestamp;
-    state.isProcessing = true;
-    setup.process(state);
-    read.process(state);
-    resolveKeyframes.process(state);
-    preUpdate.process(state);
-    update.process(state);
-    preRender.process(state);
-    render.process(state);
-    postRender.process(state);
-    state.isProcessing = false;
-    if (runNextFrame && allowKeepAlive) {
-      useDefaultElapsed = false;
-      scheduleNextBatch(processBatch);
-    }
-  };
-  const wake = () => {
-    runNextFrame = true;
-    useDefaultElapsed = true;
-    if (!state.isProcessing) {
-      scheduleNextBatch(processBatch);
-    }
-  };
-  const schedule = stepsOrder.reduce((acc, key) => {
-    const step = steps[key];
-    acc[key] = (process2, keepAlive = false, immediate = false) => {
-      if (!runNextFrame)
-        wake();
-      return step.schedule(process2, keepAlive, immediate);
-    };
-    return acc;
-  }, {});
-  const cancel = (process2) => {
-    for (let i2 = 0; i2 < stepsOrder.length; i2++) {
-      steps[stepsOrder[i2]].cancel(process2);
-    }
-  };
-  return { schedule, cancel, state, steps };
-}
-const { schedule: frame, cancel: cancelFrame, state: frameData, steps: frameSteps } = /* @__PURE__ */ createRenderBatcher(typeof requestAnimationFrame !== "undefined" ? requestAnimationFrame : noop, true);
-let now;
-function clearTime() {
-  now = void 0;
-}
-const time = {
-  now: () => {
-    if (now === void 0) {
-      time.set(frameData.isProcessing || MotionGlobalConfig.useManualTiming ? frameData.timestamp : performance.now());
-    }
-    return now;
-  },
-  set: (newTime) => {
-    now = newTime;
-    queueMicrotask(clearTime);
-  }
-};
-const checkStringStartsWith = (token) => (key) => typeof key === "string" && key.startsWith(token);
-const isCSSVariableName = /* @__PURE__ */ checkStringStartsWith("--");
-const startsAsVariableToken = /* @__PURE__ */ checkStringStartsWith("var(--");
-const isCSSVariableToken = (value) => {
-  const startsWithToken = startsAsVariableToken(value);
-  if (!startsWithToken)
-    return false;
-  return singleCssVariableRegex.test(value.split("/*")[0].trim());
-};
-const singleCssVariableRegex = /var\(--(?:[\w-]+\s*|[\w-]+\s*,(?:\s*[^)(\s]|\s*\((?:[^)(]|\([^)(]*\))*\))+\s*)\)$/iu;
-function containsCSSVariable(value) {
-  if (typeof value !== "string")
-    return false;
-  return value.split("/*")[0].includes("var(--");
-}
-const number = {
-  test: (v2) => typeof v2 === "number",
-  parse: parseFloat,
-  transform: (v2) => v2
-};
-const alpha2 = {
-  ...number,
-  transform: (v2) => clamp(0, 1, v2)
-};
-const scale = {
-  ...number,
-  default: 1
-};
-const sanitize = (v2) => Math.round(v2 * 1e5) / 1e5;
-const floatRegex = /-?(?:\d+(?:\.\d+)?|\.\d+)/gu;
-function isNullish2(v2) {
-  return v2 == null;
-}
-const singleColorRegex = /^(?:#[\da-f]{3,8}|(?:rgb|hsl)a?\((?:-?[\d.]+%?[,\s]+){2}-?[\d.]+%?\s*(?:[,/]\s*)?(?:\b\d+(?:\.\d+)?|\.\d+)?%?\))$/iu;
-const isColorString = (type, testProp) => (v2) => {
-  return Boolean(typeof v2 === "string" && singleColorRegex.test(v2) && v2.startsWith(type) || testProp && !isNullish2(v2) && Object.prototype.hasOwnProperty.call(v2, testProp));
-};
-const splitColor = (aName, bName, cName) => (v2) => {
-  if (typeof v2 !== "string")
-    return v2;
-  const [a2, b2, c2, alpha3] = v2.match(floatRegex);
-  return {
-    [aName]: parseFloat(a2),
-    [bName]: parseFloat(b2),
-    [cName]: parseFloat(c2),
-    alpha: alpha3 !== void 0 ? parseFloat(alpha3) : 1
-  };
-};
-const clampRgbUnit = (v2) => clamp(0, 255, v2);
-const rgbUnit = {
-  ...number,
-  transform: (v2) => Math.round(clampRgbUnit(v2))
-};
-const rgba = {
-  test: /* @__PURE__ */ isColorString("rgb", "red"),
-  parse: /* @__PURE__ */ splitColor("red", "green", "blue"),
-  transform: ({ red, green, blue, alpha: alpha$12 = 1 }) => "rgba(" + rgbUnit.transform(red) + ", " + rgbUnit.transform(green) + ", " + rgbUnit.transform(blue) + ", " + sanitize(alpha2.transform(alpha$12)) + ")"
-};
-function parseHex(v2) {
-  let r2 = "";
-  let g2 = "";
-  let b2 = "";
-  let a2 = "";
-  if (v2.length > 5) {
-    r2 = v2.substring(1, 3);
-    g2 = v2.substring(3, 5);
-    b2 = v2.substring(5, 7);
-    a2 = v2.substring(7, 9);
-  } else {
-    r2 = v2.substring(1, 2);
-    g2 = v2.substring(2, 3);
-    b2 = v2.substring(3, 4);
-    a2 = v2.substring(4, 5);
-    r2 += r2;
-    g2 += g2;
-    b2 += b2;
-    a2 += a2;
-  }
-  return {
-    red: parseInt(r2, 16),
-    green: parseInt(g2, 16),
-    blue: parseInt(b2, 16),
-    alpha: a2 ? parseInt(a2, 16) / 255 : 1
-  };
-}
-const hex = {
-  test: /* @__PURE__ */ isColorString("#"),
-  parse: parseHex,
-  transform: rgba.transform
-};
-const createUnitType = /* @__NO_SIDE_EFFECTS__ */ (unit2) => ({
-  test: (v2) => typeof v2 === "string" && v2.endsWith(unit2) && v2.split(" ").length === 1,
-  parse: parseFloat,
-  transform: (v2) => `${v2}${unit2}`
-});
-const degrees = /* @__PURE__ */ createUnitType("deg");
-const percent = /* @__PURE__ */ createUnitType("%");
-const px = /* @__PURE__ */ createUnitType("px");
-const vh = /* @__PURE__ */ createUnitType("vh");
-const vw = /* @__PURE__ */ createUnitType("vw");
-const progressPercentage = /* @__PURE__ */ (() => ({
-  ...percent,
-  parse: (v2) => percent.parse(v2) / 100,
-  transform: (v2) => percent.transform(v2 * 100)
-}))();
-const hsla = {
-  test: /* @__PURE__ */ isColorString("hsl", "hue"),
-  parse: /* @__PURE__ */ splitColor("hue", "saturation", "lightness"),
-  transform: ({ hue, saturation, lightness, alpha: alpha$12 = 1 }) => {
-    return "hsla(" + Math.round(hue) + ", " + percent.transform(sanitize(saturation)) + ", " + percent.transform(sanitize(lightness)) + ", " + sanitize(alpha2.transform(alpha$12)) + ")";
-  }
-};
-const color = {
-  test: (v2) => rgba.test(v2) || hex.test(v2) || hsla.test(v2),
-  parse: (v2) => {
-    if (rgba.test(v2)) {
-      return rgba.parse(v2);
-    } else if (hsla.test(v2)) {
-      return hsla.parse(v2);
-    } else {
-      return hex.parse(v2);
-    }
-  },
-  transform: (v2) => {
-    return typeof v2 === "string" ? v2 : v2.hasOwnProperty("red") ? rgba.transform(v2) : hsla.transform(v2);
-  },
-  getAnimatableNone: (v2) => {
-    const parsed = color.parse(v2);
-    parsed.alpha = 0;
-    return color.transform(parsed);
-  }
-};
-const colorRegex = /(?:#[\da-f]{3,8}|(?:rgb|hsl)a?\((?:-?[\d.]+%?[,\s]+){2}-?[\d.]+%?\s*(?:[,/]\s*)?(?:\b\d+(?:\.\d+)?|\.\d+)?%?\))/giu;
-function test(v2) {
-  var _a3, _b3;
-  return isNaN(v2) && typeof v2 === "string" && (((_a3 = v2.match(floatRegex)) == null ? void 0 : _a3.length) || 0) + (((_b3 = v2.match(colorRegex)) == null ? void 0 : _b3.length) || 0) > 0;
-}
-const NUMBER_TOKEN = "number";
-const COLOR_TOKEN = "color";
-const VAR_TOKEN = "var";
-const VAR_FUNCTION_TOKEN = "var(";
-const SPLIT_TOKEN = "${}";
-const complexRegex = /var\s*\(\s*--(?:[\w-]+\s*|[\w-]+\s*,(?:\s*[^)(\s]|\s*\((?:[^)(]|\([^)(]*\))*\))+\s*)\)|#[\da-f]{3,8}|(?:rgb|hsl)a?\((?:-?[\d.]+%?[,\s]+){2}-?[\d.]+%?\s*(?:[,/]\s*)?(?:\b\d+(?:\.\d+)?|\.\d+)?%?\)|-?(?:\d+(?:\.\d+)?|\.\d+)/giu;
-function analyseComplexValue(value) {
-  const originalValue = value.toString();
-  const values = [];
-  const indexes = {
-    color: [],
-    number: [],
-    var: []
-  };
-  const types = [];
-  let i2 = 0;
-  const tokenised = originalValue.replace(complexRegex, (parsedValue) => {
-    if (color.test(parsedValue)) {
-      indexes.color.push(i2);
-      types.push(COLOR_TOKEN);
-      values.push(color.parse(parsedValue));
-    } else if (parsedValue.startsWith(VAR_FUNCTION_TOKEN)) {
-      indexes.var.push(i2);
-      types.push(VAR_TOKEN);
-      values.push(parsedValue);
-    } else {
-      indexes.number.push(i2);
-      types.push(NUMBER_TOKEN);
-      values.push(parseFloat(parsedValue));
-    }
-    ++i2;
-    return SPLIT_TOKEN;
-  });
-  const split2 = tokenised.split(SPLIT_TOKEN);
-  return { values, split: split2, indexes, types };
-}
-function parseComplexValue(v2) {
-  return analyseComplexValue(v2).values;
-}
-function buildTransformer({ split: split2, types }) {
-  const numSections = split2.length;
-  return (v2) => {
-    let output = "";
-    for (let i2 = 0; i2 < numSections; i2++) {
-      output += split2[i2];
-      if (v2[i2] !== void 0) {
-        const type = types[i2];
-        if (type === NUMBER_TOKEN) {
-          output += sanitize(v2[i2]);
-        } else if (type === COLOR_TOKEN) {
-          output += color.transform(v2[i2]);
-        } else {
-          output += v2[i2];
-        }
-      }
-    }
-    return output;
-  };
-}
-function createTransformer(source) {
-  return buildTransformer(analyseComplexValue(source));
-}
-const convertNumbersToZero = (v2) => typeof v2 === "number" ? 0 : color.test(v2) ? color.getAnimatableNone(v2) : v2;
-const convertToZero = (value, splitBefore) => {
-  if (typeof value === "number") {
-    return (splitBefore == null ? void 0 : splitBefore.trim().endsWith("/")) ? value : 0;
-  }
-  return convertNumbersToZero(value);
-};
-function getAnimatableNone$1(v2) {
-  const info = analyseComplexValue(v2);
-  const transformer2 = buildTransformer(info);
-  return transformer2(info.values.map((value, i2) => convertToZero(value, info.split[i2])));
-}
-const complex = {
-  test,
-  parse: parseComplexValue,
-  createTransformer,
-  getAnimatableNone: getAnimatableNone$1
-};
-function hueToRgb(p2, q2, t3) {
-  if (t3 < 0)
-    t3 += 1;
-  if (t3 > 1)
-    t3 -= 1;
-  if (t3 < 1 / 6)
-    return p2 + (q2 - p2) * 6 * t3;
-  if (t3 < 1 / 2)
-    return q2;
-  if (t3 < 2 / 3)
-    return p2 + (q2 - p2) * (2 / 3 - t3) * 6;
-  return p2;
-}
-function hslaToRgba({ hue, saturation, lightness, alpha: alpha3 }) {
-  hue /= 360;
-  saturation /= 100;
-  lightness /= 100;
-  let red = 0;
-  let green = 0;
-  let blue = 0;
-  if (!saturation) {
-    red = green = blue = lightness;
-  } else {
-    const q2 = lightness < 0.5 ? lightness * (1 + saturation) : lightness + saturation - lightness * saturation;
-    const p2 = 2 * lightness - q2;
-    red = hueToRgb(p2, q2, hue + 1 / 3);
-    green = hueToRgb(p2, q2, hue);
-    blue = hueToRgb(p2, q2, hue - 1 / 3);
-  }
-  return {
-    red: Math.round(red * 255),
-    green: Math.round(green * 255),
-    blue: Math.round(blue * 255),
-    alpha: alpha3
-  };
-}
-function mixImmediate(a2, b2) {
-  return (p2) => p2 > 0 ? b2 : a2;
-}
-const mixNumber$1 = (from, to, progress2) => {
-  return from + (to - from) * progress2;
-};
-const mixLinearColor = (from, to, v2) => {
-  const fromExpo = from * from;
-  const expo = v2 * (to * to - fromExpo) + fromExpo;
-  return expo < 0 ? 0 : Math.sqrt(expo);
-};
-const colorTypes = [hex, rgba, hsla];
-const getColorType = (v2) => colorTypes.find((type) => type.test(v2));
-function asRGBA(color2) {
-  const type = getColorType(color2);
-  if (!Boolean(type))
-    return false;
-  let model = type.parse(color2);
-  if (type === hsla) {
-    model = hslaToRgba(model);
-  }
-  return model;
-}
-const mixColor = (from, to) => {
-  const fromRGBA = asRGBA(from);
-  const toRGBA = asRGBA(to);
-  if (!fromRGBA || !toRGBA) {
-    return mixImmediate(from, to);
-  }
-  const blended = { ...fromRGBA };
-  return (v2) => {
-    blended.red = mixLinearColor(fromRGBA.red, toRGBA.red, v2);
-    blended.green = mixLinearColor(fromRGBA.green, toRGBA.green, v2);
-    blended.blue = mixLinearColor(fromRGBA.blue, toRGBA.blue, v2);
-    blended.alpha = mixNumber$1(fromRGBA.alpha, toRGBA.alpha, v2);
-    return rgba.transform(blended);
-  };
-};
-const invisibleValues = /* @__PURE__ */ new Set(["none", "hidden"]);
-function mixVisibility(origin, target) {
-  if (invisibleValues.has(origin)) {
-    return (p2) => p2 <= 0 ? origin : target;
-  } else {
-    return (p2) => p2 >= 1 ? target : origin;
-  }
-}
-function mixNumber(a2, b2) {
-  return (p2) => mixNumber$1(a2, b2, p2);
-}
-function getMixer(a2) {
-  if (typeof a2 === "number") {
-    return mixNumber;
-  } else if (typeof a2 === "string") {
-    return isCSSVariableToken(a2) ? mixImmediate : color.test(a2) ? mixColor : mixComplex;
-  } else if (Array.isArray(a2)) {
-    return mixArray;
-  } else if (typeof a2 === "object") {
-    return color.test(a2) ? mixColor : mixObject;
-  }
-  return mixImmediate;
-}
-function mixArray(a2, b2) {
-  const output = [...a2];
-  const numValues = output.length;
-  const blendValue = a2.map((v2, i2) => getMixer(v2)(v2, b2[i2]));
-  return (p2) => {
-    for (let i2 = 0; i2 < numValues; i2++) {
-      output[i2] = blendValue[i2](p2);
-    }
-    return output;
-  };
-}
-function mixObject(a2, b2) {
-  const output = { ...a2, ...b2 };
-  const blendValue = {};
-  for (const key in output) {
-    if (a2[key] !== void 0 && b2[key] !== void 0) {
-      blendValue[key] = getMixer(a2[key])(a2[key], b2[key]);
-    }
-  }
-  return (v2) => {
-    for (const key in blendValue) {
-      output[key] = blendValue[key](v2);
-    }
-    return output;
-  };
-}
-function matchOrder(origin, target) {
-  const orderedOrigin = [];
-  const pointers = { color: 0, var: 0, number: 0 };
-  for (let i2 = 0; i2 < target.values.length; i2++) {
-    const type = target.types[i2];
-    const originIndex = origin.indexes[type][pointers[type]];
-    const originValue = origin.values[originIndex] ?? 0;
-    orderedOrigin[i2] = originValue;
-    pointers[type]++;
-  }
-  return orderedOrigin;
-}
-const mixComplex = (origin, target) => {
-  const template = complex.createTransformer(target);
-  const originStats = analyseComplexValue(origin);
-  const targetStats = analyseComplexValue(target);
-  const canInterpolate = originStats.indexes.var.length === targetStats.indexes.var.length && originStats.indexes.color.length === targetStats.indexes.color.length && originStats.indexes.number.length >= targetStats.indexes.number.length;
-  if (canInterpolate) {
-    if (invisibleValues.has(origin) && !targetStats.values.length || invisibleValues.has(target) && !originStats.values.length) {
-      return mixVisibility(origin, target);
-    }
-    return pipe(mixArray(matchOrder(originStats, targetStats), targetStats.values), template);
-  } else {
-    return mixImmediate(origin, target);
-  }
-};
-function mix(from, to, p2) {
-  if (typeof from === "number" && typeof to === "number" && typeof p2 === "number") {
-    return mixNumber$1(from, to, p2);
-  }
-  const mixer = getMixer(from);
-  return mixer(from, to);
-}
-const frameloopDriver = (update) => {
-  const passTimestamp = ({ timestamp }) => update(timestamp);
-  return {
-    start: (keepAlive = true) => frame.update(passTimestamp, keepAlive),
-    stop: () => cancelFrame(passTimestamp),
-    /**
-     * If we're processing this frame we can use the
-     * framelocked timestamp to keep things in sync.
-     */
-    now: () => frameData.isProcessing ? frameData.timestamp : time.now()
-  };
-};
-const generateLinearEasing = (easing, duration, resolution = 10) => {
-  let points = "";
-  const numPoints = Math.max(Math.round(duration / resolution), 2);
-  for (let i2 = 0; i2 < numPoints; i2++) {
-    points += Math.round(easing(i2 / (numPoints - 1)) * 1e4) / 1e4 + ", ";
-  }
-  return `linear(${points.substring(0, points.length - 2)})`;
-};
-const maxGeneratorDuration = 2e4;
-function calcGeneratorDuration(generator) {
-  let duration = 0;
-  const timeStep = 50;
-  let state = generator.next(duration);
-  while (!state.done && duration < maxGeneratorDuration) {
-    duration += timeStep;
-    state = generator.next(duration);
-  }
-  return duration >= maxGeneratorDuration ? Infinity : duration;
-}
-function createGeneratorEasing(options, scale2 = 100, createGenerator) {
-  const generator = createGenerator({ ...options, keyframes: [0, scale2] });
-  const duration = Math.min(calcGeneratorDuration(generator), maxGeneratorDuration);
-  return {
-    type: "keyframes",
-    ease: (progress2) => {
-      return generator.next(duration * progress2).value / scale2;
-    },
-    duration: /* @__PURE__ */ millisecondsToSeconds(duration)
-  };
-}
-const springDefaults = {
-  // Default spring physics
-  stiffness: 100,
-  damping: 10,
-  mass: 1,
-  velocity: 0,
-  // Default duration/bounce-based options
-  duration: 800,
-  // in ms
-  bounce: 0.3,
-  visualDuration: 0.3,
-  // in seconds
-  // Rest thresholds
-  restSpeed: {
-    granular: 0.01,
-    default: 2
-  },
-  restDelta: {
-    granular: 5e-3,
-    default: 0.5
-  },
-  // Limits
-  minDuration: 0.01,
-  // in seconds
-  maxDuration: 10,
-  // in seconds
-  minDamping: 0.05,
-  maxDamping: 1
-};
-function calcAngularFreq(undampedFreq, dampingRatio) {
-  return undampedFreq * Math.sqrt(1 - dampingRatio * dampingRatio);
-}
-const rootIterations = 12;
-function approximateRoot(envelope, derivative, initialGuess) {
-  let result = initialGuess;
-  for (let i2 = 1; i2 < rootIterations; i2++) {
-    result = result - envelope(result) / derivative(result);
-  }
-  return result;
-}
-const safeMin = 1e-3;
-function findSpring({ duration = springDefaults.duration, bounce = springDefaults.bounce, velocity = springDefaults.velocity, mass = springDefaults.mass }) {
-  let envelope;
-  let derivative;
-  let dampingRatio = 1 - bounce;
-  dampingRatio = clamp(springDefaults.minDamping, springDefaults.maxDamping, dampingRatio);
-  duration = clamp(springDefaults.minDuration, springDefaults.maxDuration, /* @__PURE__ */ millisecondsToSeconds(duration));
-  if (dampingRatio < 1) {
-    envelope = (undampedFreq2) => {
-      const exponentialDecay = undampedFreq2 * dampingRatio;
-      const delta = exponentialDecay * duration;
-      const a2 = exponentialDecay - velocity;
-      const b2 = calcAngularFreq(undampedFreq2, dampingRatio);
-      const c2 = Math.exp(-delta);
-      return safeMin - a2 / b2 * c2;
-    };
-    derivative = (undampedFreq2) => {
-      const exponentialDecay = undampedFreq2 * dampingRatio;
-      const delta = exponentialDecay * duration;
-      const d2 = delta * velocity + velocity;
-      const e3 = Math.pow(dampingRatio, 2) * Math.pow(undampedFreq2, 2) * duration;
-      const f2 = Math.exp(-delta);
-      const g2 = calcAngularFreq(Math.pow(undampedFreq2, 2), dampingRatio);
-      const factor = -envelope(undampedFreq2) + safeMin > 0 ? -1 : 1;
-      return factor * ((d2 - e3) * f2) / g2;
-    };
-  } else {
-    envelope = (undampedFreq2) => {
-      const a2 = Math.exp(-undampedFreq2 * duration);
-      const b2 = (undampedFreq2 - velocity) * duration + 1;
-      return -safeMin + a2 * b2;
-    };
-    derivative = (undampedFreq2) => {
-      const a2 = Math.exp(-undampedFreq2 * duration);
-      const b2 = (velocity - undampedFreq2) * (duration * duration);
-      return a2 * b2;
-    };
-  }
-  const initialGuess = 5 / duration;
-  const undampedFreq = approximateRoot(envelope, derivative, initialGuess);
-  duration = /* @__PURE__ */ secondsToMilliseconds(duration);
-  if (isNaN(undampedFreq)) {
-    return {
-      stiffness: springDefaults.stiffness,
-      damping: springDefaults.damping,
-      duration
-    };
-  } else {
-    const stiffness = Math.pow(undampedFreq, 2) * mass;
-    return {
-      stiffness,
-      damping: dampingRatio * 2 * Math.sqrt(mass * stiffness),
-      duration
-    };
-  }
-}
-const durationKeys = ["duration", "bounce"];
-const physicsKeys = ["stiffness", "damping", "mass"];
-function isSpringType(options, keys2) {
-  return keys2.some((key) => options[key] !== void 0);
-}
-function getSpringOptions(options) {
-  let springOptions = {
-    velocity: springDefaults.velocity,
-    stiffness: springDefaults.stiffness,
-    damping: springDefaults.damping,
-    mass: springDefaults.mass,
-    isResolvedFromDuration: false,
-    ...options
-  };
-  if (!isSpringType(options, physicsKeys) && isSpringType(options, durationKeys)) {
-    springOptions.velocity = 0;
-    if (options.visualDuration) {
-      const visualDuration = options.visualDuration;
-      const root2 = 2 * Math.PI / (visualDuration * 1.2);
-      const stiffness = root2 * root2;
-      const damping = 2 * clamp(0.05, 1, 1 - (options.bounce || 0)) * Math.sqrt(stiffness);
-      springOptions = {
-        ...springOptions,
-        mass: springDefaults.mass,
-        stiffness,
-        damping
-      };
-    } else {
-      const derived = findSpring({ ...options, velocity: 0 });
-      springOptions = {
-        ...springOptions,
-        ...derived,
-        mass: springDefaults.mass
-      };
-      springOptions.isResolvedFromDuration = true;
-    }
-  }
-  return springOptions;
-}
-function spring(optionsOrVisualDuration = springDefaults.visualDuration, bounce = springDefaults.bounce) {
-  const options = typeof optionsOrVisualDuration !== "object" ? {
-    visualDuration: optionsOrVisualDuration,
-    keyframes: [0, 1],
-    bounce
-  } : optionsOrVisualDuration;
-  let { restSpeed, restDelta } = options;
-  const origin = options.keyframes[0];
-  const target = options.keyframes[options.keyframes.length - 1];
-  const state = { done: false, value: origin };
-  const { stiffness, damping, mass, duration, velocity, isResolvedFromDuration } = getSpringOptions({
-    ...options,
-    velocity: -/* @__PURE__ */ millisecondsToSeconds(options.velocity || 0)
-  });
-  const initialVelocity = velocity || 0;
-  const dampingRatio = damping / (2 * Math.sqrt(stiffness * mass));
-  const initialDelta = target - origin;
-  const undampedAngularFreq = /* @__PURE__ */ millisecondsToSeconds(Math.sqrt(stiffness / mass));
-  const isGranularScale = Math.abs(initialDelta) < 5;
-  restSpeed || (restSpeed = isGranularScale ? springDefaults.restSpeed.granular : springDefaults.restSpeed.default);
-  restDelta || (restDelta = isGranularScale ? springDefaults.restDelta.granular : springDefaults.restDelta.default);
-  let resolveSpring;
-  let resolveVelocity;
-  let angularFreq;
-  let A2;
-  let sinCoeff;
-  let cosCoeff;
-  if (dampingRatio < 1) {
-    angularFreq = calcAngularFreq(undampedAngularFreq, dampingRatio);
-    A2 = (initialVelocity + dampingRatio * undampedAngularFreq * initialDelta) / angularFreq;
-    resolveSpring = (t3) => {
-      const envelope = Math.exp(-dampingRatio * undampedAngularFreq * t3);
-      return target - envelope * (A2 * Math.sin(angularFreq * t3) + initialDelta * Math.cos(angularFreq * t3));
-    };
-    sinCoeff = dampingRatio * undampedAngularFreq * A2 + initialDelta * angularFreq;
-    cosCoeff = dampingRatio * undampedAngularFreq * initialDelta - A2 * angularFreq;
-    resolveVelocity = (t3) => {
-      const envelope = Math.exp(-dampingRatio * undampedAngularFreq * t3);
-      return envelope * (sinCoeff * Math.sin(angularFreq * t3) + cosCoeff * Math.cos(angularFreq * t3));
-    };
-  } else if (dampingRatio === 1) {
-    resolveSpring = (t3) => target - Math.exp(-undampedAngularFreq * t3) * (initialDelta + (initialVelocity + undampedAngularFreq * initialDelta) * t3);
-    const C2 = initialVelocity + undampedAngularFreq * initialDelta;
-    resolveVelocity = (t3) => Math.exp(-undampedAngularFreq * t3) * (undampedAngularFreq * C2 * t3 - initialVelocity);
-  } else {
-    const dampedAngularFreq = undampedAngularFreq * Math.sqrt(dampingRatio * dampingRatio - 1);
-    resolveSpring = (t3) => {
-      const envelope = Math.exp(-dampingRatio * undampedAngularFreq * t3);
-      const freqForT = Math.min(dampedAngularFreq * t3, 300);
-      return target - envelope * ((initialVelocity + dampingRatio * undampedAngularFreq * initialDelta) * Math.sinh(freqForT) + dampedAngularFreq * initialDelta * Math.cosh(freqForT)) / dampedAngularFreq;
-    };
-    const P2 = (initialVelocity + dampingRatio * undampedAngularFreq * initialDelta) / dampedAngularFreq;
-    const sinhCoeff = dampingRatio * undampedAngularFreq * P2 - initialDelta * dampedAngularFreq;
-    const coshCoeff = dampingRatio * undampedAngularFreq * initialDelta - P2 * dampedAngularFreq;
-    resolveVelocity = (t3) => {
-      const envelope = Math.exp(-dampingRatio * undampedAngularFreq * t3);
-      const freqForT = Math.min(dampedAngularFreq * t3, 300);
-      return envelope * (sinhCoeff * Math.sinh(freqForT) + coshCoeff * Math.cosh(freqForT));
-    };
-  }
-  const generator = {
-    calculatedDuration: isResolvedFromDuration ? duration || null : null,
-    velocity: (t3) => /* @__PURE__ */ secondsToMilliseconds(resolveVelocity(t3)),
-    next: (t3) => {
-      if (!isResolvedFromDuration && dampingRatio < 1) {
-        const envelope = Math.exp(-dampingRatio * undampedAngularFreq * t3);
-        const sin2 = Math.sin(angularFreq * t3);
-        const cos2 = Math.cos(angularFreq * t3);
-        const current2 = target - envelope * (A2 * sin2 + initialDelta * cos2);
-        const currentVelocity = /* @__PURE__ */ secondsToMilliseconds(envelope * (sinCoeff * sin2 + cosCoeff * cos2));
-        state.done = Math.abs(currentVelocity) <= restSpeed && Math.abs(target - current2) <= restDelta;
-        state.value = state.done ? target : current2;
-        return state;
-      }
-      const current = resolveSpring(t3);
-      if (!isResolvedFromDuration) {
-        const currentVelocity = /* @__PURE__ */ secondsToMilliseconds(resolveVelocity(t3));
-        state.done = Math.abs(currentVelocity) <= restSpeed && Math.abs(target - current) <= restDelta;
-      } else {
-        state.done = t3 >= duration;
-      }
-      state.value = state.done ? target : current;
-      return state;
-    },
-    toString: () => {
-      const calculatedDuration = Math.min(calcGeneratorDuration(generator), maxGeneratorDuration);
-      const easing = generateLinearEasing((progress2) => generator.next(calculatedDuration * progress2).value, calculatedDuration, 30);
-      return calculatedDuration + "ms " + easing;
-    },
-    toTransition: () => {
-    }
-  };
-  return generator;
-}
-spring.applyToOptions = (options) => {
-  const generatorOptions = createGeneratorEasing(options, 100, spring);
-  options.ease = generatorOptions.ease;
-  options.duration = /* @__PURE__ */ secondsToMilliseconds(generatorOptions.duration);
-  options.type = "keyframes";
-  return options;
-};
-const velocitySampleDuration = 5;
-function getGeneratorVelocity(resolveValue, t3, current) {
-  const prevT = Math.max(t3 - velocitySampleDuration, 0);
-  return velocityPerSecond(current - resolveValue(prevT), t3 - prevT);
-}
-function inertia({ keyframes: keyframes2, velocity = 0, power = 0.8, timeConstant = 325, bounceDamping = 10, bounceStiffness = 500, modifyTarget, min: min2, max: max2, restDelta = 0.5, restSpeed }) {
-  const origin = keyframes2[0];
-  const state = {
-    done: false,
-    value: origin
-  };
-  const isOutOfBounds = (v2) => min2 !== void 0 && v2 < min2 || max2 !== void 0 && v2 > max2;
-  const nearestBoundary = (v2) => {
-    if (min2 === void 0)
-      return max2;
-    if (max2 === void 0)
-      return min2;
-    return Math.abs(min2 - v2) < Math.abs(max2 - v2) ? min2 : max2;
-  };
-  let amplitude = power * velocity;
-  const ideal = origin + amplitude;
-  const target = modifyTarget === void 0 ? ideal : modifyTarget(ideal);
-  if (target !== ideal)
-    amplitude = target - origin;
-  const calcDelta = (t3) => -amplitude * Math.exp(-t3 / timeConstant);
-  const calcLatest = (t3) => target + calcDelta(t3);
-  const applyFriction = (t3) => {
-    const delta = calcDelta(t3);
-    const latest = calcLatest(t3);
-    state.done = Math.abs(delta) <= restDelta;
-    state.value = state.done ? target : latest;
-  };
-  let timeReachedBoundary;
-  let spring$1;
-  const checkCatchBoundary = (t3) => {
-    if (!isOutOfBounds(state.value))
-      return;
-    timeReachedBoundary = t3;
-    spring$1 = spring({
-      keyframes: [state.value, nearestBoundary(state.value)],
-      velocity: getGeneratorVelocity(calcLatest, t3, state.value),
-      // TODO: This should be passing * 1000
-      damping: bounceDamping,
-      stiffness: bounceStiffness,
-      restDelta,
-      restSpeed
-    });
-  };
-  checkCatchBoundary(0);
-  return {
-    calculatedDuration: null,
-    next: (t3) => {
-      let hasUpdatedFrame = false;
-      if (!spring$1 && timeReachedBoundary === void 0) {
-        hasUpdatedFrame = true;
-        applyFriction(t3);
-        checkCatchBoundary(t3);
-      }
-      if (timeReachedBoundary !== void 0 && t3 >= timeReachedBoundary) {
-        return spring$1.next(t3 - timeReachedBoundary);
-      } else {
-        !hasUpdatedFrame && applyFriction(t3);
-        return state;
-      }
-    }
-  };
-}
-function createMixers(output, ease2, customMixer) {
-  const mixers = [];
-  const mixerFactory = customMixer || MotionGlobalConfig.mix || mix;
-  const numMixers = output.length - 1;
-  for (let i2 = 0; i2 < numMixers; i2++) {
-    let mixer = mixerFactory(output[i2], output[i2 + 1]);
-    if (ease2) {
-      const easingFunction = Array.isArray(ease2) ? ease2[i2] || noop : ease2;
-      mixer = pipe(easingFunction, mixer);
-    }
-    mixers.push(mixer);
-  }
-  return mixers;
-}
-function interpolate(input, output, { clamp: isClamp = true, ease: ease2, mixer } = {}) {
-  const inputLength = input.length;
-  invariant(inputLength === output.length);
-  if (inputLength === 1)
-    return () => output[0];
-  if (inputLength === 2 && output[0] === output[1])
-    return () => output[1];
-  const isZeroDeltaRange = input[0] === input[1];
-  if (input[0] > input[inputLength - 1]) {
-    input = [...input].reverse();
-    output = [...output].reverse();
-  }
-  const mixers = createMixers(output, ease2, mixer);
-  const numMixers = mixers.length;
-  const interpolator = (v2) => {
-    if (isZeroDeltaRange && v2 < input[0])
-      return output[0];
-    let i2 = 0;
-    if (numMixers > 1) {
-      for (; i2 < input.length - 2; i2++) {
-        if (v2 < input[i2 + 1])
-          break;
-      }
-    }
-    const progressInRange = /* @__PURE__ */ progress(input[i2], input[i2 + 1], v2);
-    return mixers[i2](progressInRange);
-  };
-  return isClamp ? (v2) => interpolator(clamp(input[0], input[inputLength - 1], v2)) : interpolator;
-}
-function fillOffset(offset, remaining) {
-  const min2 = offset[offset.length - 1];
-  for (let i2 = 1; i2 <= remaining; i2++) {
-    const offsetProgress = /* @__PURE__ */ progress(0, remaining, i2);
-    offset.push(mixNumber$1(min2, 1, offsetProgress));
-  }
-}
-function defaultOffset(arr) {
-  const offset = [0];
-  fillOffset(offset, arr.length - 1);
-  return offset;
-}
-function convertOffsetToTimes(offset, duration) {
-  return offset.map((o2) => o2 * duration);
-}
-function defaultEasing(values, easing) {
-  return values.map(() => easing || easeInOut).splice(0, values.length - 1);
-}
-function keyframes({ duration = 300, keyframes: keyframeValues, times, ease: ease2 = "easeInOut" }) {
-  const easingFunctions = isEasingArray(ease2) ? ease2.map(easingDefinitionToFunction) : easingDefinitionToFunction(ease2);
-  const state = {
-    done: false,
-    value: keyframeValues[0]
-  };
-  const absoluteTimes = convertOffsetToTimes(
-    // Only use the provided offsets if they're the correct length
-    // TODO Maybe we should warn here if there's a length mismatch
-    times && times.length === keyframeValues.length ? times : defaultOffset(keyframeValues),
-    duration
-  );
-  const mapTimeToKeyframe = interpolate(absoluteTimes, keyframeValues, {
-    ease: Array.isArray(easingFunctions) ? easingFunctions : defaultEasing(keyframeValues, easingFunctions)
-  });
-  return {
-    calculatedDuration: duration,
-    next: (t3) => {
-      state.value = mapTimeToKeyframe(t3);
-      state.done = t3 >= duration;
-      return state;
-    }
-  };
-}
-const isNotNull = (value) => value !== null;
-function getFinalKeyframe(keyframes2, { repeat, repeatType = "loop" }, finalKeyframe, speed = 1) {
-  const resolvedKeyframes = keyframes2.filter(isNotNull);
-  const useFirstKeyframe = speed < 0 || repeat && repeatType !== "loop" && repeat % 2 === 1;
-  const index2 = useFirstKeyframe ? 0 : resolvedKeyframes.length - 1;
-  return !index2 || finalKeyframe === void 0 ? resolvedKeyframes[index2] : finalKeyframe;
-}
-const transitionTypeMap = {
-  decay: inertia,
-  inertia,
-  tween: keyframes,
-  keyframes,
-  spring
-};
-function replaceTransitionType(transition) {
-  if (typeof transition.type === "string") {
-    transition.type = transitionTypeMap[transition.type];
-  }
-}
-class WithPromise {
-  constructor() {
-    this.updateFinished();
-  }
-  get finished() {
-    return this._finished;
-  }
-  updateFinished() {
-    this._finished = new Promise((resolve) => {
-      this.resolve = resolve;
-    });
-  }
-  notifyFinished() {
-    this.resolve();
-  }
-  /**
-   * Allows the animation to be awaited.
-   *
-   * @deprecated Use `finished` instead.
-   */
-  then(onResolve, onReject) {
-    return this.finished.then(onResolve, onReject);
-  }
-}
-const percentToProgress = (percent2) => percent2 / 100;
-class JSAnimation extends WithPromise {
-  constructor(options) {
-    super();
-    this.state = "idle";
-    this.startTime = null;
-    this.isStopped = false;
-    this.currentTime = 0;
-    this.holdTime = null;
-    this.playbackSpeed = 1;
-    this.delayState = {
-      done: false,
-      value: void 0
-    };
-    this.stop = () => {
-      var _a3, _b3;
-      const { motionValue: motionValue2 } = this.options;
-      if (motionValue2 && motionValue2.updatedAt !== time.now()) {
-        this.tick(time.now());
-      }
-      this.isStopped = true;
-      if (this.state === "idle")
-        return;
-      this.teardown();
-      (_b3 = (_a3 = this.options).onStop) == null ? void 0 : _b3.call(_a3);
-    };
-    this.options = options;
-    this.initAnimation();
-    this.play();
-    if (options.autoplay === false)
-      this.pause();
-  }
-  initAnimation() {
-    const { options } = this;
-    replaceTransitionType(options);
-    const { type = keyframes, repeat = 0, repeatDelay = 0, repeatType, velocity = 0 } = options;
-    let { keyframes: keyframes$1 } = options;
-    const generatorFactory = type || keyframes;
-    if (generatorFactory !== keyframes && typeof keyframes$1[0] !== "number") {
-      this.mixKeyframes = pipe(percentToProgress, mix(keyframes$1[0], keyframes$1[1]));
-      keyframes$1 = [0, 100];
-    }
-    const generator = generatorFactory({ ...options, keyframes: keyframes$1 });
-    if (repeatType === "mirror") {
-      this.mirroredGenerator = generatorFactory({
-        ...options,
-        keyframes: [...keyframes$1].reverse(),
-        velocity: -velocity
-      });
-    }
-    if (generator.calculatedDuration === null) {
-      generator.calculatedDuration = calcGeneratorDuration(generator);
-    }
-    const { calculatedDuration } = generator;
-    this.calculatedDuration = calculatedDuration;
-    this.resolvedDuration = calculatedDuration + repeatDelay;
-    this.totalDuration = this.resolvedDuration * (repeat + 1) - repeatDelay;
-    this.generator = generator;
-  }
-  updateTime(timestamp) {
-    const animationTime = Math.round(timestamp - this.startTime) * this.playbackSpeed;
-    if (this.holdTime !== null) {
-      this.currentTime = this.holdTime;
-    } else {
-      this.currentTime = animationTime;
-    }
-  }
-  tick(timestamp, sample = false) {
-    const { generator, totalDuration, mixKeyframes, mirroredGenerator, resolvedDuration, calculatedDuration } = this;
-    if (this.startTime === null)
-      return generator.next(0);
-    const { delay: delay2 = 0, keyframes: keyframes2, repeat, repeatType, repeatDelay, type, onUpdate, finalKeyframe } = this.options;
-    if (this.speed > 0) {
-      this.startTime = Math.min(this.startTime, timestamp);
-    } else if (this.speed < 0) {
-      this.startTime = Math.min(timestamp - totalDuration / this.speed, this.startTime);
-    }
-    if (sample) {
-      this.currentTime = timestamp;
-    } else {
-      this.updateTime(timestamp);
-    }
-    const timeWithoutDelay = this.currentTime - delay2 * (this.playbackSpeed >= 0 ? 1 : -1);
-    const isInDelayPhase = this.playbackSpeed >= 0 ? timeWithoutDelay < 0 : timeWithoutDelay > totalDuration;
-    this.currentTime = Math.max(timeWithoutDelay, 0);
-    if (this.state === "finished" && this.holdTime === null) {
-      this.currentTime = totalDuration;
-    }
-    let elapsed = this.currentTime;
-    let frameGenerator = generator;
-    if (repeat) {
-      const progress2 = Math.min(this.currentTime, totalDuration) / resolvedDuration;
-      let currentIteration = Math.floor(progress2);
-      let iterationProgress = progress2 % 1;
-      if (!iterationProgress && progress2 >= 1) {
-        iterationProgress = 1;
-      }
-      iterationProgress === 1 && currentIteration--;
-      currentIteration = Math.min(currentIteration, repeat + 1);
-      const isOddIteration = Boolean(currentIteration % 2);
-      if (isOddIteration) {
-        if (repeatType === "reverse") {
-          iterationProgress = 1 - iterationProgress;
-          if (repeatDelay) {
-            iterationProgress -= repeatDelay / resolvedDuration;
-          }
-        } else if (repeatType === "mirror") {
-          frameGenerator = mirroredGenerator;
-        }
-      }
-      elapsed = clamp(0, 1, iterationProgress) * resolvedDuration;
-    }
-    let state;
-    if (isInDelayPhase) {
-      this.delayState.value = keyframes2[0];
-      state = this.delayState;
-    } else {
-      state = frameGenerator.next(elapsed);
-    }
-    if (mixKeyframes && !isInDelayPhase) {
-      state.value = mixKeyframes(state.value);
-    }
-    let { done } = state;
-    if (!isInDelayPhase && calculatedDuration !== null) {
-      done = this.playbackSpeed >= 0 ? this.currentTime >= totalDuration : this.currentTime <= 0;
-    }
-    const isAnimationFinished = this.holdTime === null && (this.state === "finished" || this.state === "running" && done);
-    if (isAnimationFinished && type !== inertia) {
-      state.value = getFinalKeyframe(keyframes2, this.options, finalKeyframe, this.speed);
-    }
-    if (onUpdate) {
-      onUpdate(state.value);
-    }
-    if (isAnimationFinished) {
-      this.finish();
-    }
-    return state;
-  }
-  /**
-   * Allows the returned animation to be awaited or promise-chained. Currently
-   * resolves when the animation finishes at all but in a future update could/should
-   * reject if its cancels.
-   */
-  then(resolve, reject) {
-    return this.finished.then(resolve, reject);
-  }
-  get duration() {
-    return /* @__PURE__ */ millisecondsToSeconds(this.calculatedDuration);
-  }
-  get iterationDuration() {
-    const { delay: delay2 = 0 } = this.options || {};
-    return this.duration + /* @__PURE__ */ millisecondsToSeconds(delay2);
-  }
-  get time() {
-    return /* @__PURE__ */ millisecondsToSeconds(this.currentTime);
-  }
-  set time(newTime) {
-    newTime = /* @__PURE__ */ secondsToMilliseconds(newTime);
-    this.currentTime = newTime;
-    if (this.startTime === null || this.holdTime !== null || this.playbackSpeed === 0) {
-      this.holdTime = newTime;
-    } else if (this.driver) {
-      this.startTime = this.driver.now() - newTime / this.playbackSpeed;
-    }
-    if (this.driver) {
-      this.driver.start(false);
-    } else {
-      this.startTime = 0;
-      this.state = "paused";
-      this.holdTime = newTime;
-      this.tick(newTime);
-    }
-  }
-  /**
-   * Returns the generator's velocity at the current time in units/second.
-   * Uses the analytical derivative when available (springs), avoiding
-   * the MotionValue's frame-dependent velocity estimation.
-   */
-  getGeneratorVelocity() {
-    const t3 = this.currentTime;
-    if (t3 <= 0)
-      return this.options.velocity || 0;
-    if (this.generator.velocity) {
-      return this.generator.velocity(t3);
-    }
-    const current = this.generator.next(t3).value;
-    return getGeneratorVelocity((s2) => this.generator.next(s2).value, t3, current);
-  }
-  get speed() {
-    return this.playbackSpeed;
-  }
-  set speed(newSpeed) {
-    const hasChanged = this.playbackSpeed !== newSpeed;
-    if (hasChanged && this.driver) {
-      this.updateTime(time.now());
-    }
-    this.playbackSpeed = newSpeed;
-    if (hasChanged && this.driver) {
-      this.time = /* @__PURE__ */ millisecondsToSeconds(this.currentTime);
-    }
-  }
-  play() {
-    var _a3, _b3;
-    if (this.isStopped)
-      return;
-    const { driver = frameloopDriver, startTime } = this.options;
-    if (!this.driver) {
-      this.driver = driver((timestamp) => this.tick(timestamp));
-    }
-    (_b3 = (_a3 = this.options).onPlay) == null ? void 0 : _b3.call(_a3);
-    const now2 = this.driver.now();
-    if (this.state === "finished") {
-      this.updateFinished();
-      this.startTime = now2;
-    } else if (this.holdTime !== null) {
-      this.startTime = now2 - this.holdTime;
-    } else if (!this.startTime) {
-      this.startTime = startTime ?? now2;
-    }
-    if (this.state === "finished" && this.speed < 0) {
-      this.startTime += this.calculatedDuration;
-    }
-    this.holdTime = null;
-    this.state = "running";
-    this.driver.start();
-  }
-  pause() {
-    this.state = "paused";
-    this.updateTime(time.now());
-    this.holdTime = this.currentTime;
-  }
-  complete() {
-    if (this.state !== "running") {
-      this.play();
-    }
-    this.state = "finished";
-    this.holdTime = null;
-  }
-  finish() {
-    var _a3, _b3;
-    this.notifyFinished();
-    this.teardown();
-    this.state = "finished";
-    (_b3 = (_a3 = this.options).onComplete) == null ? void 0 : _b3.call(_a3);
-  }
-  cancel() {
-    var _a3, _b3;
-    this.holdTime = null;
-    this.startTime = 0;
-    this.tick(0);
-    this.teardown();
-    (_b3 = (_a3 = this.options).onCancel) == null ? void 0 : _b3.call(_a3);
-  }
-  teardown() {
-    this.state = "idle";
-    this.stopDriver();
-    this.startTime = this.holdTime = null;
-  }
-  stopDriver() {
-    if (!this.driver)
-      return;
-    this.driver.stop();
-    this.driver = void 0;
-  }
-  sample(sampleTime) {
-    this.startTime = 0;
-    return this.tick(sampleTime, true);
-  }
-  attachTimeline(timeline) {
-    var _a3;
-    if (this.options.allowFlatten) {
-      this.options.type = "keyframes";
-      this.options.ease = "linear";
-      this.initAnimation();
-    }
-    (_a3 = this.driver) == null ? void 0 : _a3.stop();
-    return timeline.observe(this);
-  }
-}
-function fillWildcards(keyframes2) {
-  for (let i2 = 1; i2 < keyframes2.length; i2++) {
-    keyframes2[i2] ?? (keyframes2[i2] = keyframes2[i2 - 1]);
-  }
-}
-const radToDeg = (rad) => rad * 180 / Math.PI;
-const rotate = (v2) => {
-  const angle = radToDeg(Math.atan2(v2[1], v2[0]));
-  return rebaseAngle(angle);
-};
-const matrix2dParsers = {
-  x: 4,
-  y: 5,
-  translateX: 4,
-  translateY: 5,
-  scaleX: 0,
-  scaleY: 3,
-  scale: (v2) => (Math.abs(v2[0]) + Math.abs(v2[3])) / 2,
-  rotate,
-  rotateZ: rotate,
-  skewX: (v2) => radToDeg(Math.atan(v2[1])),
-  skewY: (v2) => radToDeg(Math.atan(v2[2])),
-  skew: (v2) => (Math.abs(v2[1]) + Math.abs(v2[2])) / 2
-};
-const rebaseAngle = (angle) => {
-  angle = angle % 360;
-  if (angle < 0)
-    angle += 360;
-  return angle;
-};
-const rotateZ = rotate;
-const scaleX = (v2) => Math.sqrt(v2[0] * v2[0] + v2[1] * v2[1]);
-const scaleY = (v2) => Math.sqrt(v2[4] * v2[4] + v2[5] * v2[5]);
-const matrix3dParsers = {
-  x: 12,
-  y: 13,
-  z: 14,
-  translateX: 12,
-  translateY: 13,
-  translateZ: 14,
-  scaleX,
-  scaleY,
-  scale: (v2) => (scaleX(v2) + scaleY(v2)) / 2,
-  rotateX: (v2) => rebaseAngle(radToDeg(Math.atan2(v2[6], v2[5]))),
-  rotateY: (v2) => rebaseAngle(radToDeg(Math.atan2(-v2[2], v2[0]))),
-  rotateZ,
-  rotate: rotateZ,
-  skewX: (v2) => radToDeg(Math.atan(v2[4])),
-  skewY: (v2) => radToDeg(Math.atan(v2[1])),
-  skew: (v2) => (Math.abs(v2[1]) + Math.abs(v2[4])) / 2
-};
-function defaultTransformValue(name) {
-  return name.includes("scale") ? 1 : 0;
-}
-function parseValueFromTransform(transform, name) {
-  if (!transform || transform === "none") {
-    return defaultTransformValue(name);
-  }
-  const matrix3dMatch = transform.match(/^matrix3d\(([-\d.e\s,]+)\)$/u);
-  let parsers;
-  let match;
-  if (matrix3dMatch) {
-    parsers = matrix3dParsers;
-    match = matrix3dMatch;
-  } else {
-    const matrix2dMatch = transform.match(/^matrix\(([-\d.e\s,]+)\)$/u);
-    parsers = matrix2dParsers;
-    match = matrix2dMatch;
-  }
-  if (!match) {
-    return defaultTransformValue(name);
-  }
-  const valueParser = parsers[name];
-  const values = match[1].split(",").map(convertTransformToNumber);
-  return typeof valueParser === "function" ? valueParser(values) : values[valueParser];
-}
-const readTransformValue = (instance, name) => {
-  const { transform = "none" } = getComputedStyle(instance);
-  return parseValueFromTransform(transform, name);
-};
-function convertTransformToNumber(value) {
-  return parseFloat(value.trim());
-}
-const transformPropOrder = [
-  "transformPerspective",
-  "x",
-  "y",
-  "z",
-  "translateX",
-  "translateY",
-  "translateZ",
-  "scale",
-  "scaleX",
-  "scaleY",
-  "rotate",
-  "rotateX",
-  "rotateY",
-  "rotateZ",
-  "skew",
-  "skewX",
-  "skewY"
-];
-const transformProps = /* @__PURE__ */ (() => new Set(transformPropOrder))();
-const isNumOrPxType = (v2) => v2 === number || v2 === px;
-const transformKeys = /* @__PURE__ */ new Set(["x", "y", "z"]);
-const nonTranslationalTransformKeys = transformPropOrder.filter((key) => !transformKeys.has(key));
-function removeNonTranslationalTransform(visualElement) {
-  const removedTransforms = [];
-  nonTranslationalTransformKeys.forEach((key) => {
-    const value = visualElement.getValue(key);
-    if (value !== void 0) {
-      removedTransforms.push([key, value.get()]);
-      value.set(key.startsWith("scale") ? 1 : 0);
-    }
-  });
-  return removedTransforms;
-}
-const positionalValues = {
-  // Dimensions
-  width: ({ x: x3 }, { paddingLeft = "0", paddingRight = "0", boxSizing }) => {
-    const width = x3.max - x3.min;
-    return boxSizing === "border-box" ? width : width - parseFloat(paddingLeft) - parseFloat(paddingRight);
-  },
-  height: ({ y: y2 }, { paddingTop = "0", paddingBottom = "0", boxSizing }) => {
-    const height = y2.max - y2.min;
-    return boxSizing === "border-box" ? height : height - parseFloat(paddingTop) - parseFloat(paddingBottom);
-  },
-  top: (_bbox, { top }) => parseFloat(top),
-  left: (_bbox, { left }) => parseFloat(left),
-  bottom: ({ y: y2 }, { top }) => parseFloat(top) + (y2.max - y2.min),
-  right: ({ x: x3 }, { left }) => parseFloat(left) + (x3.max - x3.min),
-  // Transform
-  x: (_bbox, { transform }) => parseValueFromTransform(transform, "x"),
-  y: (_bbox, { transform }) => parseValueFromTransform(transform, "y")
-};
-positionalValues.translateX = positionalValues.x;
-positionalValues.translateY = positionalValues.y;
-const toResolve = /* @__PURE__ */ new Set();
-let isScheduled = false;
-let anyNeedsMeasurement = false;
-let isForced = false;
-function measureAllKeyframes() {
-  if (anyNeedsMeasurement) {
-    const resolversToMeasure = Array.from(toResolve).filter((resolver) => resolver.needsMeasurement);
-    const elementsToMeasure = new Set(resolversToMeasure.map((resolver) => resolver.element));
-    const transformsToRestore = /* @__PURE__ */ new Map();
-    elementsToMeasure.forEach((element) => {
-      const removedTransforms = removeNonTranslationalTransform(element);
-      if (!removedTransforms.length)
-        return;
-      transformsToRestore.set(element, removedTransforms);
-      element.render();
-    });
-    resolversToMeasure.forEach((resolver) => resolver.measureInitialState());
-    elementsToMeasure.forEach((element) => {
-      element.render();
-      const restore = transformsToRestore.get(element);
-      if (restore) {
-        restore.forEach(([key, value]) => {
-          var _a3;
-          (_a3 = element.getValue(key)) == null ? void 0 : _a3.set(value);
-        });
-      }
-    });
-    resolversToMeasure.forEach((resolver) => resolver.measureEndState());
-    resolversToMeasure.forEach((resolver) => {
-      if (resolver.suspendedScrollY !== void 0) {
-        window.scrollTo(0, resolver.suspendedScrollY);
-      }
-    });
-  }
-  anyNeedsMeasurement = false;
-  isScheduled = false;
-  toResolve.forEach((resolver) => resolver.complete(isForced));
-  toResolve.clear();
-}
-function readAllKeyframes() {
-  toResolve.forEach((resolver) => {
-    resolver.readKeyframes();
-    if (resolver.needsMeasurement) {
-      anyNeedsMeasurement = true;
-    }
-  });
-}
-function flushKeyframeResolvers() {
-  isForced = true;
-  readAllKeyframes();
-  measureAllKeyframes();
-  isForced = false;
-}
-class KeyframeResolver {
-  constructor(unresolvedKeyframes, onComplete, name, motionValue2, element, isAsync = false) {
-    this.state = "pending";
-    this.isAsync = false;
-    this.needsMeasurement = false;
-    this.unresolvedKeyframes = [...unresolvedKeyframes];
-    this.onComplete = onComplete;
-    this.name = name;
-    this.motionValue = motionValue2;
-    this.element = element;
-    this.isAsync = isAsync;
-  }
-  scheduleResolve() {
-    this.state = "scheduled";
-    if (this.isAsync) {
-      toResolve.add(this);
-      if (!isScheduled) {
-        isScheduled = true;
-        frame.read(readAllKeyframes);
-        frame.resolveKeyframes(measureAllKeyframes);
-      }
-    } else {
-      this.readKeyframes();
-      this.complete();
-    }
-  }
-  readKeyframes() {
-    const { unresolvedKeyframes, name, element, motionValue: motionValue2 } = this;
-    if (unresolvedKeyframes[0] === null) {
-      const currentValue = motionValue2 == null ? void 0 : motionValue2.get();
-      const finalKeyframe = unresolvedKeyframes[unresolvedKeyframes.length - 1];
-      if (currentValue !== void 0) {
-        unresolvedKeyframes[0] = currentValue;
-      } else if (element && name) {
-        const valueAsRead = element.readValue(name, finalKeyframe);
-        if (valueAsRead !== void 0 && valueAsRead !== null) {
-          unresolvedKeyframes[0] = valueAsRead;
-        }
-      }
-      if (unresolvedKeyframes[0] === void 0) {
-        unresolvedKeyframes[0] = finalKeyframe;
-      }
-      if (motionValue2 && currentValue === void 0) {
-        motionValue2.set(unresolvedKeyframes[0]);
-      }
-    }
-    fillWildcards(unresolvedKeyframes);
-  }
-  setFinalKeyframe() {
-  }
-  measureInitialState() {
-  }
-  renderEndStyles() {
-  }
-  measureEndState() {
-  }
-  complete(isForcedComplete = false) {
-    this.state = "complete";
-    this.onComplete(this.unresolvedKeyframes, this.finalKeyframe, isForcedComplete);
-    toResolve.delete(this);
-  }
-  cancel() {
-    if (this.state === "scheduled") {
-      toResolve.delete(this);
-      this.state = "pending";
-    }
-  }
-  resume() {
-    if (this.state === "pending")
-      this.scheduleResolve();
-  }
-}
-const isCSSVar = (name) => name.startsWith("--");
-function setStyle(element, name, value) {
-  isCSSVar(name) ? element.style.setProperty(name, value) : element.style[name] = value;
-}
-const supportsFlags = {};
-function memoSupports(callback, supportsFlag) {
-  const memoized2 = /* @__PURE__ */ memo(callback);
-  return () => supportsFlags[supportsFlag] ?? memoized2();
-}
-const supportsScrollTimeline = /* @__PURE__ */ memoSupports(() => window.ScrollTimeline !== void 0, "scrollTimeline");
-const supportsLinearEasing = /* @__PURE__ */ memoSupports(() => {
-  try {
-    document.createElement("div").animate({ opacity: 0 }, { easing: "linear(0, 1)" });
-  } catch (e3) {
-    return false;
-  }
-  return true;
-}, "linearEasing");
-const cubicBezierAsString = ([a2, b2, c2, d2]) => `cubic-bezier(${a2}, ${b2}, ${c2}, ${d2})`;
-const supportedWaapiEasing = {
-  linear: "linear",
-  ease: "ease",
-  easeIn: "ease-in",
-  easeOut: "ease-out",
-  easeInOut: "ease-in-out",
-  circIn: /* @__PURE__ */ cubicBezierAsString([0, 0.65, 0.55, 1]),
-  circOut: /* @__PURE__ */ cubicBezierAsString([0.55, 0, 1, 0.45]),
-  backIn: /* @__PURE__ */ cubicBezierAsString([0.31, 0.01, 0.66, -0.59]),
-  backOut: /* @__PURE__ */ cubicBezierAsString([0.33, 1.53, 0.69, 0.99])
-};
-function mapEasingToNativeEasing(easing, duration) {
-  if (!easing) {
-    return void 0;
-  } else if (typeof easing === "function") {
-    return supportsLinearEasing() ? generateLinearEasing(easing, duration) : "ease-out";
-  } else if (isBezierDefinition(easing)) {
-    return cubicBezierAsString(easing);
-  } else if (Array.isArray(easing)) {
-    return easing.map((segmentEasing) => mapEasingToNativeEasing(segmentEasing, duration) || supportedWaapiEasing.easeOut);
-  } else {
-    return supportedWaapiEasing[easing];
-  }
-}
-function startWaapiAnimation(element, valueName, keyframes2, { delay: delay2 = 0, duration = 300, repeat = 0, repeatType = "loop", ease: ease2 = "easeOut", times } = {}, pseudoElement = void 0) {
-  const keyframeOptions = {
-    [valueName]: keyframes2
-  };
-  if (times)
-    keyframeOptions.offset = times;
-  const easing = mapEasingToNativeEasing(ease2, duration);
-  if (Array.isArray(easing))
-    keyframeOptions.easing = easing;
-  const options = {
-    delay: delay2,
-    duration,
-    easing: !Array.isArray(easing) ? easing : "linear",
-    fill: "both",
-    iterations: repeat + 1,
-    direction: repeatType === "reverse" ? "alternate" : "normal"
-  };
-  if (pseudoElement)
-    options.pseudoElement = pseudoElement;
-  const animation = element.animate(keyframeOptions, options);
-  return animation;
-}
-function isGenerator(type) {
-  return typeof type === "function" && "applyToOptions" in type;
-}
-function applyGeneratorOptions({ type, ...options }) {
-  if (isGenerator(type) && supportsLinearEasing()) {
-    return type.applyToOptions(options);
-  } else {
-    options.duration ?? (options.duration = 300);
-    options.ease ?? (options.ease = "easeOut");
-  }
-  return options;
-}
-class NativeAnimation extends WithPromise {
-  constructor(options) {
-    super();
-    this.finishedTime = null;
-    this.isStopped = false;
-    this.manualStartTime = null;
-    if (!options)
-      return;
-    const { element, name, keyframes: keyframes2, pseudoElement, allowFlatten = false, finalKeyframe, onComplete } = options;
-    this.isPseudoElement = Boolean(pseudoElement);
-    this.allowFlatten = allowFlatten;
-    this.options = options;
-    invariant(typeof options.type !== "string");
-    const transition = applyGeneratorOptions(options);
-    this.animation = startWaapiAnimation(element, name, keyframes2, transition, pseudoElement);
-    if (transition.autoplay === false) {
-      this.animation.pause();
-    }
-    this.animation.onfinish = () => {
-      this.finishedTime = this.time;
-      if (!pseudoElement) {
-        const keyframe = getFinalKeyframe(keyframes2, this.options, finalKeyframe, this.speed);
-        if (this.updateMotionValue) {
-          this.updateMotionValue(keyframe);
-        }
-        setStyle(element, name, keyframe);
-        this.animation.cancel();
-      }
-      onComplete == null ? void 0 : onComplete();
-      this.notifyFinished();
-    };
-  }
-  play() {
-    if (this.isStopped)
-      return;
-    this.manualStartTime = null;
-    this.animation.play();
-    if (this.state === "finished") {
-      this.updateFinished();
-    }
-  }
-  pause() {
-    this.animation.pause();
-  }
-  complete() {
-    var _a3, _b3;
-    (_b3 = (_a3 = this.animation).finish) == null ? void 0 : _b3.call(_a3);
-  }
-  cancel() {
-    try {
-      this.animation.cancel();
-    } catch (e3) {
-    }
-  }
-  stop() {
-    if (this.isStopped)
-      return;
-    this.isStopped = true;
-    const { state } = this;
-    if (state === "idle" || state === "finished") {
-      return;
-    }
-    if (this.updateMotionValue) {
-      this.updateMotionValue();
-    } else {
-      this.commitStyles();
-    }
-    if (!this.isPseudoElement)
-      this.cancel();
-  }
-  /**
-   * WAAPI doesn't natively have any interruption capabilities.
-   *
-   * In this method, we commit styles back to the DOM before cancelling
-   * the animation.
-   *
-   * This is designed to be overridden by NativeAnimationExtended, which
-   * will create a renderless JS animation and sample it twice to calculate
-   * its current value, "previous" value, and therefore allow
-   * Motion to also correctly calculate velocity for any subsequent animation
-   * while deferring the commit until the next animation frame.
-   */
-  commitStyles() {
-    var _a3, _b3, _c2;
-    const element = (_a3 = this.options) == null ? void 0 : _a3.element;
-    if (!this.isPseudoElement && (element == null ? void 0 : element.isConnected)) {
-      (_c2 = (_b3 = this.animation).commitStyles) == null ? void 0 : _c2.call(_b3);
-    }
-  }
-  get duration() {
-    var _a3, _b3;
-    const duration = ((_b3 = (_a3 = this.animation.effect) == null ? void 0 : _a3.getComputedTiming) == null ? void 0 : _b3.call(_a3).duration) || 0;
-    return /* @__PURE__ */ millisecondsToSeconds(Number(duration));
-  }
-  get iterationDuration() {
-    const { delay: delay2 = 0 } = this.options || {};
-    return this.duration + /* @__PURE__ */ millisecondsToSeconds(delay2);
-  }
-  get time() {
-    return /* @__PURE__ */ millisecondsToSeconds(Number(this.animation.currentTime) || 0);
-  }
-  set time(newTime) {
-    const wasFinished = this.finishedTime !== null;
-    this.manualStartTime = null;
-    this.finishedTime = null;
-    this.animation.currentTime = /* @__PURE__ */ secondsToMilliseconds(newTime);
-    if (wasFinished) {
-      this.animation.pause();
-    }
-  }
-  /**
-   * The playback speed of the animation.
-   * 1 = normal speed, 2 = double speed, 0.5 = half speed.
-   */
-  get speed() {
-    return this.animation.playbackRate;
-  }
-  set speed(newSpeed) {
-    if (newSpeed < 0)
-      this.finishedTime = null;
-    this.animation.playbackRate = newSpeed;
-  }
-  get state() {
-    return this.finishedTime !== null ? "finished" : this.animation.playState;
-  }
-  get startTime() {
-    return this.manualStartTime ?? Number(this.animation.startTime);
-  }
-  set startTime(newStartTime) {
-    this.manualStartTime = this.animation.startTime = newStartTime;
-  }
-  /**
-   * Attaches a timeline to the animation, for instance the `ScrollTimeline`.
-   */
-  attachTimeline({ timeline, rangeStart, rangeEnd, observe }) {
-    var _a3;
-    if (this.allowFlatten) {
-      (_a3 = this.animation.effect) == null ? void 0 : _a3.updateTiming({ easing: "linear" });
-    }
-    this.animation.onfinish = null;
-    if (timeline && supportsScrollTimeline()) {
-      this.animation.timeline = timeline;
-      if (rangeStart)
-        this.animation.rangeStart = rangeStart;
-      if (rangeEnd)
-        this.animation.rangeEnd = rangeEnd;
-      return noop;
-    } else {
-      return observe(this);
-    }
-  }
-}
-const unsupportedEasingFunctions = {
-  anticipate,
-  backInOut,
-  circInOut
-};
-function isUnsupportedEase(key) {
-  return key in unsupportedEasingFunctions;
-}
-function replaceStringEasing(transition) {
-  if (typeof transition.ease === "string" && isUnsupportedEase(transition.ease)) {
-    transition.ease = unsupportedEasingFunctions[transition.ease];
-  }
-}
-const sampleDelta = 10;
-class NativeAnimationExtended extends NativeAnimation {
-  constructor(options) {
-    replaceStringEasing(options);
-    replaceTransitionType(options);
-    super(options);
-    if (options.startTime !== void 0 && options.autoplay !== false) {
-      this.startTime = options.startTime;
-    }
-    this.options = options;
-  }
-  /**
-   * WAAPI doesn't natively have any interruption capabilities.
-   *
-   * Rather than read committed styles back out of the DOM, we can
-   * create a renderless JS animation and sample it twice to calculate
-   * its current value, "previous" value, and therefore allow
-   * Motion to calculate velocity for any subsequent animation.
-   */
-  updateMotionValue(value) {
-    const { motionValue: motionValue2, onUpdate, onComplete, element, ...options } = this.options;
-    if (!motionValue2)
-      return;
-    if (value !== void 0) {
-      motionValue2.set(value);
-      return;
-    }
-    const sampleAnimation = new JSAnimation({
-      ...options,
-      autoplay: false
-    });
-    const sampleTime = Math.max(sampleDelta, time.now() - this.startTime);
-    const delta = clamp(0, sampleDelta, sampleTime - sampleDelta);
-    const current = sampleAnimation.sample(sampleTime).value;
-    const { name } = this.options;
-    if (element && name)
-      setStyle(element, name, current);
-    motionValue2.setWithVelocity(sampleAnimation.sample(Math.max(0, sampleTime - delta)).value, current, delta);
-    sampleAnimation.stop();
-  }
-}
-const isAnimatable = (value, name) => {
-  if (name === "zIndex")
-    return false;
-  if (typeof value === "number" || Array.isArray(value))
-    return true;
-  if (typeof value === "string" && // It's animatable if we have a string
-  (complex.test(value) || value === "0") && // And it contains numbers and/or colors
-  !value.startsWith("url(")) {
-    return true;
-  }
-  return false;
-};
-function hasKeyframesChanged(keyframes2) {
-  const current = keyframes2[0];
-  if (keyframes2.length === 1)
-    return true;
-  for (let i2 = 0; i2 < keyframes2.length; i2++) {
-    if (keyframes2[i2] !== current)
-      return true;
-  }
-}
-function canAnimate(keyframes2, name, type, velocity) {
-  const originKeyframe = keyframes2[0];
-  if (originKeyframe === null) {
-    return false;
-  }
-  if (name === "display" || name === "visibility")
-    return true;
-  const targetKeyframe = keyframes2[keyframes2.length - 1];
-  const isOriginAnimatable = isAnimatable(originKeyframe, name);
-  const isTargetAnimatable = isAnimatable(targetKeyframe, name);
-  if (!isOriginAnimatable || !isTargetAnimatable) {
-    return false;
-  }
-  return hasKeyframesChanged(keyframes2) || (type === "spring" || isGenerator(type)) && velocity;
-}
-function makeAnimationInstant(options) {
-  options.duration = 0;
-  options.type = "keyframes";
-}
-const acceleratedValues = /* @__PURE__ */ new Set([
-  "opacity",
-  "clipPath",
-  "filter",
-  "transform"
-  // TODO: Can be accelerated but currently disabled until https://issues.chromium.org/issues/41491098 is resolved
-  // or until we implement support for linear() easing.
-  // "background-color"
-]);
-const browserColorFunctions = /^(?:oklch|oklab|lab|lch|color|color-mix|light-dark)\(/;
-function hasBrowserOnlyColors(keyframes2) {
-  for (let i2 = 0; i2 < keyframes2.length; i2++) {
-    if (typeof keyframes2[i2] === "string" && browserColorFunctions.test(keyframes2[i2])) {
-      return true;
-    }
-  }
-  return false;
-}
-const colorProperties = /* @__PURE__ */ new Set([
-  "color",
-  "backgroundColor",
-  "outlineColor",
-  "fill",
-  "stroke",
-  "borderColor",
-  "borderTopColor",
-  "borderRightColor",
-  "borderBottomColor",
-  "borderLeftColor"
-]);
-const supportsWaapi = /* @__PURE__ */ memo(() => Object.hasOwnProperty.call(Element.prototype, "animate"));
-function supportsBrowserAnimation(options) {
-  var _a3;
-  const { motionValue: motionValue2, name, repeatDelay, repeatType, damping, type, keyframes: keyframes2 } = options;
-  const subject = (_a3 = motionValue2 == null ? void 0 : motionValue2.owner) == null ? void 0 : _a3.current;
-  if (!(subject instanceof HTMLElement)) {
-    return false;
-  }
-  const { onUpdate, transformTemplate } = motionValue2.owner.getProps();
-  return supportsWaapi() && name && /**
-   * Force WAAPI for color properties with browser-only color formats
-   * (oklch, oklab, lab, lch, etc.) that the JS animation path can't parse.
-   */
-  (acceleratedValues.has(name) || colorProperties.has(name) && hasBrowserOnlyColors(keyframes2)) && (name !== "transform" || !transformTemplate) && /**
-   * If we're outputting values to onUpdate then we can't use WAAPI as there's
-   * no way to read the value from WAAPI every frame.
-   */
-  !onUpdate && !repeatDelay && repeatType !== "mirror" && damping !== 0 && type !== "inertia";
-}
-const MAX_RESOLVE_DELAY = 40;
-class AsyncMotionValueAnimation extends WithPromise {
-  constructor({ autoplay = true, delay: delay2 = 0, type = "keyframes", repeat = 0, repeatDelay = 0, repeatType = "loop", keyframes: keyframes2, name, motionValue: motionValue2, element, ...options }) {
-    var _a3;
-    super();
-    this.stop = () => {
-      var _a4, _b3;
-      if (this._animation) {
-        this._animation.stop();
-        (_a4 = this.stopTimeline) == null ? void 0 : _a4.call(this);
-      }
-      (_b3 = this.keyframeResolver) == null ? void 0 : _b3.cancel();
-    };
-    this.createdAt = time.now();
-    const optionsWithDefaults = {
-      autoplay,
-      delay: delay2,
-      type,
-      repeat,
-      repeatDelay,
-      repeatType,
-      name,
-      motionValue: motionValue2,
-      element,
-      ...options
-    };
-    const KeyframeResolver$1 = (element == null ? void 0 : element.KeyframeResolver) || KeyframeResolver;
-    this.keyframeResolver = new KeyframeResolver$1(keyframes2, (resolvedKeyframes, finalKeyframe, forced) => this.onKeyframesResolved(resolvedKeyframes, finalKeyframe, optionsWithDefaults, !forced), name, motionValue2, element);
-    (_a3 = this.keyframeResolver) == null ? void 0 : _a3.scheduleResolve();
-  }
-  onKeyframesResolved(keyframes2, finalKeyframe, options, sync) {
-    var _a3, _b3;
-    this.keyframeResolver = void 0;
-    const { name, type, velocity, delay: delay2, isHandoff, onUpdate } = options;
-    this.resolvedAt = time.now();
-    let canAnimateValue = true;
-    if (!canAnimate(keyframes2, name, type, velocity)) {
-      canAnimateValue = false;
-      if (MotionGlobalConfig.instantAnimations || !delay2) {
-        onUpdate == null ? void 0 : onUpdate(getFinalKeyframe(keyframes2, options, finalKeyframe));
-      }
-      keyframes2[0] = keyframes2[keyframes2.length - 1];
-      makeAnimationInstant(options);
-      options.repeat = 0;
-    }
-    const startTime = sync ? !this.resolvedAt ? this.createdAt : this.resolvedAt - this.createdAt > MAX_RESOLVE_DELAY ? this.resolvedAt : this.createdAt : void 0;
-    const resolvedOptions = {
-      startTime,
-      finalKeyframe,
-      ...options,
-      keyframes: keyframes2
-    };
-    const useWaapi = canAnimateValue && !isHandoff && supportsBrowserAnimation(resolvedOptions);
-    const element = (_b3 = (_a3 = resolvedOptions.motionValue) == null ? void 0 : _a3.owner) == null ? void 0 : _b3.current;
-    let animation;
-    if (useWaapi) {
-      try {
-        animation = new NativeAnimationExtended({
-          ...resolvedOptions,
-          element
-        });
-      } catch {
-        animation = new JSAnimation(resolvedOptions);
-      }
-    } else {
-      animation = new JSAnimation(resolvedOptions);
-    }
-    animation.finished.then(() => {
-      this.notifyFinished();
-    }).catch(noop);
-    if (this.pendingTimeline) {
-      this.stopTimeline = animation.attachTimeline(this.pendingTimeline);
-      this.pendingTimeline = void 0;
-    }
-    this._animation = animation;
-  }
-  get finished() {
-    if (!this._animation) {
-      return this._finished;
-    } else {
-      return this.animation.finished;
-    }
-  }
-  then(onResolve, _onReject) {
-    return this.finished.finally(onResolve).then(() => {
-    });
-  }
-  get animation() {
-    var _a3;
-    if (!this._animation) {
-      (_a3 = this.keyframeResolver) == null ? void 0 : _a3.resume();
-      flushKeyframeResolvers();
-    }
-    return this._animation;
-  }
-  get duration() {
-    return this.animation.duration;
-  }
-  get iterationDuration() {
-    return this.animation.iterationDuration;
-  }
-  get time() {
-    return this.animation.time;
-  }
-  set time(newTime) {
-    this.animation.time = newTime;
-  }
-  get speed() {
-    return this.animation.speed;
-  }
-  get state() {
-    return this.animation.state;
-  }
-  set speed(newSpeed) {
-    this.animation.speed = newSpeed;
-  }
-  get startTime() {
-    return this.animation.startTime;
-  }
-  attachTimeline(timeline) {
-    if (this._animation) {
-      this.stopTimeline = this.animation.attachTimeline(timeline);
-    } else {
-      this.pendingTimeline = timeline;
-    }
-    return () => this.stop();
-  }
-  play() {
-    this.animation.play();
-  }
-  pause() {
-    this.animation.pause();
-  }
-  complete() {
-    this.animation.complete();
-  }
-  cancel() {
-    var _a3;
-    if (this._animation) {
-      this.animation.cancel();
-    }
-    (_a3 = this.keyframeResolver) == null ? void 0 : _a3.cancel();
-  }
-}
-function calcChildStagger(children, child, delayChildren, staggerChildren = 0, staggerDirection = 1) {
-  const index2 = Array.from(children).sort((a2, b2) => a2.sortNodePosition(b2)).indexOf(child);
-  const numChildren = children.size;
-  const maxStaggerDuration = (numChildren - 1) * staggerChildren;
-  const delayIsFunction = typeof delayChildren === "function";
-  return delayIsFunction ? delayChildren(index2, numChildren) : staggerDirection === 1 ? index2 * staggerChildren : maxStaggerDuration - index2 * staggerChildren;
-}
-const splitCSSVariableRegex = (
-  // eslint-disable-next-line redos-detector/no-unsafe-regex -- false positive, as it can match a lot of words
-  /^var\(--(?:([\w-]+)|([\w-]+), ?([a-zA-Z\d ()%#.,-]+))\)/u
-);
-function parseCSSVariable(current) {
-  const match = splitCSSVariableRegex.exec(current);
-  if (!match)
-    return [,];
-  const [, token1, token2, fallback] = match;
-  return [`--${token1 ?? token2}`, fallback];
-}
-function getVariableValue(current, element, depth = 1) {
-  const [token, fallback] = parseCSSVariable(current);
-  if (!token)
-    return;
-  const resolved = window.getComputedStyle(element).getPropertyValue(token);
-  if (resolved) {
-    const trimmed = resolved.trim();
-    return isNumericalString(trimmed) ? parseFloat(trimmed) : trimmed;
-  }
-  return isCSSVariableToken(fallback) ? getVariableValue(fallback, element, depth + 1) : fallback;
-}
-const underDampedSpring = {
-  type: "spring",
-  stiffness: 500,
-  damping: 25,
-  restSpeed: 10
-};
-const criticallyDampedSpring = (target) => ({
-  type: "spring",
-  stiffness: 550,
-  damping: target === 0 ? 2 * Math.sqrt(550) : 30,
-  restSpeed: 10
-});
-const keyframesTransition = {
-  type: "keyframes",
-  duration: 0.8
-};
-const ease = {
-  type: "keyframes",
-  ease: [0.25, 0.1, 0.35, 1],
-  duration: 0.3
-};
-const getDefaultTransition = (valueKey, { keyframes: keyframes2 }) => {
-  if (keyframes2.length > 2) {
-    return keyframesTransition;
-  } else if (transformProps.has(valueKey)) {
-    return valueKey.startsWith("scale") ? criticallyDampedSpring(keyframes2[1]) : underDampedSpring;
-  }
-  return ease;
-};
-function resolveTransition(transition, parentTransition) {
-  if ((transition == null ? void 0 : transition.inherit) && parentTransition) {
-    const { inherit: _2, ...rest } = transition;
-    return { ...parentTransition, ...rest };
-  }
-  return transition;
-}
-function getValueTransition(transition, key) {
-  const valueTransition = (transition == null ? void 0 : transition[key]) ?? (transition == null ? void 0 : transition["default"]) ?? transition;
-  if (valueTransition !== transition) {
-    return resolveTransition(valueTransition, transition);
-  }
-  return valueTransition;
-}
-const orchestrationKeys = /* @__PURE__ */ new Set([
-  "when",
-  "delay",
-  "delayChildren",
-  "staggerChildren",
-  "staggerDirection",
-  "repeat",
-  "repeatType",
-  "repeatDelay",
-  "from",
-  "elapsed"
-]);
-function isTransitionDefined(transition) {
-  for (const key in transition) {
-    if (!orchestrationKeys.has(key))
-      return true;
-  }
-  return false;
-}
-const animateMotionValue = (name, value, target, transition = {}, element, isHandoff) => (onComplete) => {
-  const valueTransition = getValueTransition(transition, name) || {};
-  const delay2 = valueTransition.delay || transition.delay || 0;
-  let { elapsed = 0 } = transition;
-  elapsed = elapsed - /* @__PURE__ */ secondsToMilliseconds(delay2);
-  const options = {
-    keyframes: Array.isArray(target) ? target : [null, target],
-    ease: "easeOut",
-    velocity: value.getVelocity(),
-    ...valueTransition,
-    delay: -elapsed,
-    onUpdate: (v2) => {
-      value.set(v2);
-      valueTransition.onUpdate && valueTransition.onUpdate(v2);
-    },
-    onComplete: () => {
-      onComplete();
-      valueTransition.onComplete && valueTransition.onComplete();
-    },
-    name,
-    motionValue: value,
-    element: isHandoff ? void 0 : element
-  };
-  if (!isTransitionDefined(valueTransition)) {
-    Object.assign(options, getDefaultTransition(name, options));
-  }
-  options.duration && (options.duration = /* @__PURE__ */ secondsToMilliseconds(options.duration));
-  options.repeatDelay && (options.repeatDelay = /* @__PURE__ */ secondsToMilliseconds(options.repeatDelay));
-  if (options.from !== void 0) {
-    options.keyframes[0] = options.from;
-  }
-  let shouldSkip = false;
-  if (options.type === false || options.duration === 0 && !options.repeatDelay) {
-    makeAnimationInstant(options);
-    if (options.delay === 0) {
-      shouldSkip = true;
-    }
-  }
-  if (MotionGlobalConfig.instantAnimations || MotionGlobalConfig.skipAnimations || (element == null ? void 0 : element.shouldSkipAnimations)) {
-    shouldSkip = true;
-    makeAnimationInstant(options);
-    options.delay = 0;
-  }
-  options.allowFlatten = !valueTransition.type && !valueTransition.ease;
-  if (shouldSkip && !isHandoff && value.get() !== void 0) {
-    const finalKeyframe = getFinalKeyframe(options.keyframes, valueTransition);
-    if (finalKeyframe !== void 0) {
-      frame.update(() => {
-        options.onUpdate(finalKeyframe);
-        options.onComplete();
-      });
-      return;
-    }
-  }
-  return valueTransition.isSync ? new JSAnimation(options) : new AsyncMotionValueAnimation(options);
-};
-function getValueState(visualElement) {
-  const state = [{}, {}];
-  visualElement == null ? void 0 : visualElement.values.forEach((value, key) => {
-    state[0][key] = value.get();
-    state[1][key] = value.getVelocity();
-  });
-  return state;
-}
-function resolveVariantFromProps(props, definition, custom, visualElement) {
-  if (typeof definition === "function") {
-    const [current, velocity] = getValueState(visualElement);
-    definition = definition(custom !== void 0 ? custom : props.custom, current, velocity);
-  }
-  if (typeof definition === "string") {
-    definition = props.variants && props.variants[definition];
-  }
-  if (typeof definition === "function") {
-    const [current, velocity] = getValueState(visualElement);
-    definition = definition(custom !== void 0 ? custom : props.custom, current, velocity);
-  }
-  return definition;
-}
-function resolveVariant(visualElement, definition, custom) {
-  const props = visualElement.getProps();
-  return resolveVariantFromProps(props, definition, custom !== void 0 ? custom : props.custom, visualElement);
-}
-const positionalKeys = /* @__PURE__ */ new Set([
-  "width",
-  "height",
-  "top",
-  "left",
-  "right",
-  "bottom",
-  ...transformPropOrder
-]);
-const MAX_VELOCITY_DELTA = 30;
-const isFloat = (value) => {
-  return !isNaN(parseFloat(value));
-};
-class MotionValue {
-  /**
-   * @param init - The initiating value
-   * @param config - Optional configuration options
-   *
-   * -  `transformer`: A function to transform incoming values with.
-   */
-  constructor(init, options = {}) {
-    this.canTrackVelocity = null;
-    this.events = {};
-    this.updateAndNotify = (v2) => {
-      var _a3;
-      const currentTime = time.now();
-      if (this.updatedAt !== currentTime) {
-        this.setPrevFrameValue();
-      }
-      this.prev = this.current;
-      this.setCurrent(v2);
-      if (this.current !== this.prev) {
-        (_a3 = this.events.change) == null ? void 0 : _a3.notify(this.current);
-        if (this.dependents) {
-          for (const dependent of this.dependents) {
-            dependent.dirty();
-          }
-        }
-      }
-    };
-    this.hasAnimated = false;
-    this.setCurrent(init);
-    this.owner = options.owner;
-  }
-  setCurrent(current) {
-    this.current = current;
-    this.updatedAt = time.now();
-    if (this.canTrackVelocity === null && current !== void 0) {
-      this.canTrackVelocity = isFloat(this.current);
-    }
-  }
-  setPrevFrameValue(prevFrameValue = this.current) {
-    this.prevFrameValue = prevFrameValue;
-    this.prevUpdatedAt = this.updatedAt;
-  }
-  /**
-   * Adds a function that will be notified when the `MotionValue` is updated.
-   *
-   * It returns a function that, when called, will cancel the subscription.
-   *
-   * When calling `onChange` inside a React component, it should be wrapped with the
-   * `useEffect` hook. As it returns an unsubscribe function, this should be returned
-   * from the `useEffect` function to ensure you don't add duplicate subscribers..
-   *
-   * ```jsx
-   * export const MyComponent = () => {
-   *   const x = useMotionValue(0)
-   *   const y = useMotionValue(0)
-   *   const opacity = useMotionValue(1)
-   *
-   *   useEffect(() => {
-   *     function updateOpacity() {
-   *       const maxXY = Math.max(x.get(), y.get())
-   *       const newOpacity = transform(maxXY, [0, 100], [1, 0])
-   *       opacity.set(newOpacity)
-   *     }
-   *
-   *     const unsubscribeX = x.on("change", updateOpacity)
-   *     const unsubscribeY = y.on("change", updateOpacity)
-   *
-   *     return () => {
-   *       unsubscribeX()
-   *       unsubscribeY()
-   *     }
-   *   }, [])
-   *
-   *   return <motion.div style={{ x }} />
-   * }
-   * ```
-   *
-   * @param subscriber - A function that receives the latest value.
-   * @returns A function that, when called, will cancel this subscription.
-   *
-   * @deprecated
-   */
-  onChange(subscription) {
-    return this.on("change", subscription);
-  }
-  on(eventName, callback) {
-    if (!this.events[eventName]) {
-      this.events[eventName] = new SubscriptionManager();
-    }
-    const unsubscribe = this.events[eventName].add(callback);
-    if (eventName === "change") {
-      return () => {
-        unsubscribe();
-        frame.read(() => {
-          if (!this.events.change.getSize()) {
-            this.stop();
-          }
-        });
-      };
-    }
-    return unsubscribe;
-  }
-  clearListeners() {
-    for (const eventManagers in this.events) {
-      this.events[eventManagers].clear();
-    }
-  }
-  /**
-   * Attaches a passive effect to the `MotionValue`.
-   */
-  attach(passiveEffect, stopPassiveEffect) {
-    this.passiveEffect = passiveEffect;
-    this.stopPassiveEffect = stopPassiveEffect;
-  }
-  /**
-   * Sets the state of the `MotionValue`.
-   *
-   * @remarks
-   *
-   * ```jsx
-   * const x = useMotionValue(0)
-   * x.set(10)
-   * ```
-   *
-   * @param latest - Latest value to set.
-   * @param render - Whether to notify render subscribers. Defaults to `true`
-   *
-   * @public
-   */
-  set(v2) {
-    if (!this.passiveEffect) {
-      this.updateAndNotify(v2);
-    } else {
-      this.passiveEffect(v2, this.updateAndNotify);
-    }
-  }
-  setWithVelocity(prev, current, delta) {
-    this.set(current);
-    this.prev = void 0;
-    this.prevFrameValue = prev;
-    this.prevUpdatedAt = this.updatedAt - delta;
-  }
-  /**
-   * Set the state of the `MotionValue`, stopping any active animations,
-   * effects, and resets velocity to `0`.
-   */
-  jump(v2, endAnimation = true) {
-    this.updateAndNotify(v2);
-    this.prev = v2;
-    this.prevUpdatedAt = this.prevFrameValue = void 0;
-    endAnimation && this.stop();
-    if (this.stopPassiveEffect)
-      this.stopPassiveEffect();
-  }
-  dirty() {
-    var _a3;
-    (_a3 = this.events.change) == null ? void 0 : _a3.notify(this.current);
-  }
-  addDependent(dependent) {
-    if (!this.dependents) {
-      this.dependents = /* @__PURE__ */ new Set();
-    }
-    this.dependents.add(dependent);
-  }
-  removeDependent(dependent) {
-    if (this.dependents) {
-      this.dependents.delete(dependent);
-    }
-  }
-  /**
-   * Returns the latest state of `MotionValue`
-   *
-   * @returns - The latest state of `MotionValue`
-   *
-   * @public
-   */
-  get() {
-    return this.current;
-  }
-  /**
-   * @public
-   */
-  getPrevious() {
-    return this.prev;
-  }
-  /**
-   * Returns the latest velocity of `MotionValue`
-   *
-   * @returns - The latest velocity of `MotionValue`. Returns `0` if the state is non-numerical.
-   *
-   * @public
-   */
-  getVelocity() {
-    const currentTime = time.now();
-    if (!this.canTrackVelocity || this.prevFrameValue === void 0 || currentTime - this.updatedAt > MAX_VELOCITY_DELTA) {
-      return 0;
-    }
-    const delta = Math.min(this.updatedAt - this.prevUpdatedAt, MAX_VELOCITY_DELTA);
-    return velocityPerSecond(parseFloat(this.current) - parseFloat(this.prevFrameValue), delta);
-  }
-  /**
-   * Registers a new animation to control this `MotionValue`. Only one
-   * animation can drive a `MotionValue` at one time.
-   *
-   * ```jsx
-   * value.start()
-   * ```
-   *
-   * @param animation - A function that starts the provided animation
-   */
-  start(startAnimation) {
-    this.stop();
-    return new Promise((resolve) => {
-      this.hasAnimated = true;
-      this.animation = startAnimation(resolve);
-      if (this.events.animationStart) {
-        this.events.animationStart.notify();
-      }
-    }).then(() => {
-      if (this.events.animationComplete) {
-        this.events.animationComplete.notify();
-      }
-      this.clearAnimation();
-    });
-  }
-  /**
-   * Stop the currently active animation.
-   *
-   * @public
-   */
-  stop() {
-    if (this.animation) {
-      this.animation.stop();
-      if (this.events.animationCancel) {
-        this.events.animationCancel.notify();
-      }
-    }
-    this.clearAnimation();
-  }
-  /**
-   * Returns `true` if this value is currently animating.
-   *
-   * @public
-   */
-  isAnimating() {
-    return !!this.animation;
-  }
-  clearAnimation() {
-    delete this.animation;
-  }
-  /**
-   * Destroy and clean up subscribers to this `MotionValue`.
-   *
-   * The `MotionValue` hooks like `useMotionValue` and `useTransform` automatically
-   * handle the lifecycle of the returned `MotionValue`, so this method is only necessary if you've manually
-   * created a `MotionValue` via the `motionValue` function.
-   *
-   * @public
-   */
-  destroy() {
-    var _a3, _b3;
-    (_a3 = this.dependents) == null ? void 0 : _a3.clear();
-    (_b3 = this.events.destroy) == null ? void 0 : _b3.notify();
-    this.clearListeners();
-    this.stop();
-    if (this.stopPassiveEffect) {
-      this.stopPassiveEffect();
-    }
-  }
-}
-function motionValue(init, options) {
-  return new MotionValue(init, options);
-}
-const isKeyframesTarget = (v2) => {
-  return Array.isArray(v2);
-};
-function setMotionValue(visualElement, key, value) {
-  if (visualElement.hasValue(key)) {
-    visualElement.getValue(key).set(value);
-  } else {
-    visualElement.addValue(key, motionValue(value));
-  }
-}
-function resolveFinalValueInKeyframes(v2) {
-  return isKeyframesTarget(v2) ? v2[v2.length - 1] || 0 : v2;
-}
-function setTarget(visualElement, definition) {
-  const resolved = resolveVariant(visualElement, definition);
-  let { transitionEnd = {}, transition = {}, ...target } = resolved || {};
-  target = { ...target, ...transitionEnd };
-  for (const key in target) {
-    const value = resolveFinalValueInKeyframes(target[key]);
-    setMotionValue(visualElement, key, value);
-  }
-}
-const isMotionValue = (value) => Boolean(value && value.getVelocity);
-function isWillChangeMotionValue(value) {
-  return Boolean(isMotionValue(value) && value.add);
-}
-function addValueToWillChange(visualElement, key) {
-  const willChange = visualElement.getValue("willChange");
-  if (isWillChangeMotionValue(willChange)) {
-    return willChange.add(key);
-  } else if (!willChange && MotionGlobalConfig.WillChange) {
-    const newWillChange = new MotionGlobalConfig.WillChange("auto");
-    visualElement.addValue("willChange", newWillChange);
-    newWillChange.add(key);
-  }
-}
-function camelToDash(str) {
-  return str.replace(/([A-Z])/g, (match) => `-${match.toLowerCase()}`);
-}
-const optimizedAppearDataId = "framerAppearId";
-const optimizedAppearDataAttribute = "data-" + camelToDash(optimizedAppearDataId);
-function getOptimisedAppearId(visualElement) {
-  return visualElement.props[optimizedAppearDataAttribute];
-}
-function shouldBlockAnimation({ protectedKeys, needsAnimating }, key) {
-  const shouldBlock = protectedKeys.hasOwnProperty(key) && needsAnimating[key] !== true;
-  needsAnimating[key] = false;
-  return shouldBlock;
-}
-function animateTarget(visualElement, targetAndTransition, { delay: delay2 = 0, transitionOverride, type } = {}) {
-  let { transition, transitionEnd, ...target } = targetAndTransition;
-  const defaultTransition = visualElement.getDefaultTransition();
-  transition = transition ? resolveTransition(transition, defaultTransition) : defaultTransition;
-  const reduceMotion = transition == null ? void 0 : transition.reduceMotion;
-  if (transitionOverride)
-    transition = transitionOverride;
-  const animations2 = [];
-  const animationTypeState = type && visualElement.animationState && visualElement.animationState.getState()[type];
-  for (const key in target) {
-    const value = visualElement.getValue(key, visualElement.latestValues[key] ?? null);
-    const valueTarget = target[key];
-    if (valueTarget === void 0 || animationTypeState && shouldBlockAnimation(animationTypeState, key)) {
-      continue;
-    }
-    const valueTransition = {
-      delay: delay2,
-      ...getValueTransition(transition || {}, key)
-    };
-    const currentValue = value.get();
-    if (currentValue !== void 0 && !value.isAnimating() && !Array.isArray(valueTarget) && valueTarget === currentValue && !valueTransition.velocity) {
-      frame.update(() => value.set(valueTarget));
-      continue;
-    }
-    let isHandoff = false;
-    if (window.MotionHandoffAnimation) {
-      const appearId = getOptimisedAppearId(visualElement);
-      if (appearId) {
-        const startTime = window.MotionHandoffAnimation(appearId, key, frame);
-        if (startTime !== null) {
-          valueTransition.startTime = startTime;
-          isHandoff = true;
-        }
-      }
-    }
-    addValueToWillChange(visualElement, key);
-    const shouldReduceMotion = reduceMotion ?? visualElement.shouldReduceMotion;
-    value.start(animateMotionValue(key, value, valueTarget, shouldReduceMotion && positionalKeys.has(key) ? { type: false } : valueTransition, visualElement, isHandoff));
-    const animation = value.animation;
-    if (animation) {
-      animations2.push(animation);
-    }
-  }
-  if (transitionEnd) {
-    const applyTransitionEnd = () => frame.update(() => {
-      transitionEnd && setTarget(visualElement, transitionEnd);
-    });
-    if (animations2.length) {
-      Promise.all(animations2).then(applyTransitionEnd);
-    } else {
-      applyTransitionEnd();
-    }
-  }
-  return animations2;
-}
-function animateVariant(visualElement, variant, options = {}) {
-  var _a3;
-  const resolved = resolveVariant(visualElement, variant, options.type === "exit" ? (_a3 = visualElement.presenceContext) == null ? void 0 : _a3.custom : void 0);
-  let { transition = visualElement.getDefaultTransition() || {} } = resolved || {};
-  if (options.transitionOverride) {
-    transition = options.transitionOverride;
-  }
-  const getAnimation = resolved ? () => Promise.all(animateTarget(visualElement, resolved, options)) : () => Promise.resolve();
-  const getChildAnimations = visualElement.variantChildren && visualElement.variantChildren.size ? (forwardDelay = 0) => {
-    const { delayChildren = 0, staggerChildren, staggerDirection } = transition;
-    return animateChildren(visualElement, variant, forwardDelay, delayChildren, staggerChildren, staggerDirection, options);
-  } : () => Promise.resolve();
-  const { when } = transition;
-  if (when) {
-    const [first, last2] = when === "beforeChildren" ? [getAnimation, getChildAnimations] : [getChildAnimations, getAnimation];
-    return first().then(() => last2());
-  } else {
-    return Promise.all([getAnimation(), getChildAnimations(options.delay)]);
-  }
-}
-function animateChildren(visualElement, variant, delay2 = 0, delayChildren = 0, staggerChildren = 0, staggerDirection = 1, options) {
-  const animations2 = [];
-  for (const child of visualElement.variantChildren) {
-    child.notify("AnimationStart", variant);
-    animations2.push(animateVariant(child, variant, {
-      ...options,
-      delay: delay2 + (typeof delayChildren === "function" ? 0 : delayChildren) + calcChildStagger(visualElement.variantChildren, child, delayChildren, staggerChildren, staggerDirection)
-    }).then(() => child.notify("AnimationComplete", variant)));
-  }
-  return Promise.all(animations2);
-}
-function animateVisualElement(visualElement, definition, options = {}) {
-  visualElement.notify("AnimationStart", definition);
-  let animation;
-  if (Array.isArray(definition)) {
-    const animations2 = definition.map((variant) => animateVariant(visualElement, variant, options));
-    animation = Promise.all(animations2);
-  } else if (typeof definition === "string") {
-    animation = animateVariant(visualElement, definition, options);
-  } else {
-    const resolvedDefinition = typeof definition === "function" ? resolveVariant(visualElement, definition, options.custom) : definition;
-    animation = Promise.all(animateTarget(visualElement, resolvedDefinition, options));
-  }
-  return animation.then(() => {
-    visualElement.notify("AnimationComplete", definition);
-  });
-}
-const auto = {
-  test: (v2) => v2 === "auto",
-  parse: (v2) => v2
-};
-const testValueType = (v2) => (type) => type.test(v2);
-const dimensionValueTypes = [number, px, percent, degrees, vw, vh, auto];
-const findDimensionValueType = (v2) => dimensionValueTypes.find(testValueType(v2));
-function isNone(value) {
-  if (typeof value === "number") {
-    return value === 0;
-  } else if (value !== null) {
-    return value === "none" || value === "0" || isZeroValueString(value);
-  } else {
-    return true;
-  }
-}
-const maxDefaults = /* @__PURE__ */ new Set(["brightness", "contrast", "saturate", "opacity"]);
-function applyDefaultFilter(v2) {
-  const [name, value] = v2.slice(0, -1).split("(");
-  if (name === "drop-shadow")
-    return v2;
-  const [number2] = value.match(floatRegex) || [];
-  if (!number2)
-    return v2;
-  const unit2 = value.replace(number2, "");
-  let defaultValue = maxDefaults.has(name) ? 1 : 0;
-  if (number2 !== value)
-    defaultValue *= 100;
-  return name + "(" + defaultValue + unit2 + ")";
-}
-const functionRegex = /\b([a-z-]*)\(.*?\)/gu;
-const filter = {
-  ...complex,
-  getAnimatableNone: (v2) => {
-    const functions = v2.match(functionRegex);
-    return functions ? functions.map(applyDefaultFilter).join(" ") : v2;
-  }
-};
-const mask = {
-  ...complex,
-  getAnimatableNone: (v2) => {
-    const parsed = complex.parse(v2);
-    const transformer2 = complex.createTransformer(v2);
-    return transformer2(parsed.map((v3) => typeof v3 === "number" ? 0 : typeof v3 === "object" ? { ...v3, alpha: 1 } : v3));
-  }
-};
-const int = {
-  ...number,
-  transform: Math.round
-};
-const transformValueTypes = {
-  rotate: degrees,
-  rotateX: degrees,
-  rotateY: degrees,
-  rotateZ: degrees,
-  scale,
-  scaleX: scale,
-  scaleY: scale,
-  scaleZ: scale,
-  skew: degrees,
-  skewX: degrees,
-  skewY: degrees,
-  distance: px,
-  translateX: px,
-  translateY: px,
-  translateZ: px,
-  x: px,
-  y: px,
-  z: px,
-  perspective: px,
-  transformPerspective: px,
-  opacity: alpha2,
-  originX: progressPercentage,
-  originY: progressPercentage,
-  originZ: px
-};
-const numberValueTypes = {
-  // Border props
-  borderWidth: px,
-  borderTopWidth: px,
-  borderRightWidth: px,
-  borderBottomWidth: px,
-  borderLeftWidth: px,
-  borderRadius: px,
-  borderTopLeftRadius: px,
-  borderTopRightRadius: px,
-  borderBottomRightRadius: px,
-  borderBottomLeftRadius: px,
-  // Positioning props
-  width: px,
-  maxWidth: px,
-  height: px,
-  maxHeight: px,
-  top: px,
-  right: px,
-  bottom: px,
-  left: px,
-  inset: px,
-  insetBlock: px,
-  insetBlockStart: px,
-  insetBlockEnd: px,
-  insetInline: px,
-  insetInlineStart: px,
-  insetInlineEnd: px,
-  // Spacing props
-  padding: px,
-  paddingTop: px,
-  paddingRight: px,
-  paddingBottom: px,
-  paddingLeft: px,
-  paddingBlock: px,
-  paddingBlockStart: px,
-  paddingBlockEnd: px,
-  paddingInline: px,
-  paddingInlineStart: px,
-  paddingInlineEnd: px,
-  margin: px,
-  marginTop: px,
-  marginRight: px,
-  marginBottom: px,
-  marginLeft: px,
-  marginBlock: px,
-  marginBlockStart: px,
-  marginBlockEnd: px,
-  marginInline: px,
-  marginInlineStart: px,
-  marginInlineEnd: px,
-  // Typography
-  fontSize: px,
-  // Misc
-  backgroundPositionX: px,
-  backgroundPositionY: px,
-  ...transformValueTypes,
-  zIndex: int,
-  // SVG
-  fillOpacity: alpha2,
-  strokeOpacity: alpha2,
-  numOctaves: int
-};
-const defaultValueTypes = {
-  ...numberValueTypes,
-  // Color props
-  color,
-  backgroundColor: color,
-  outlineColor: color,
-  fill: color,
-  stroke: color,
-  // Border props
-  borderColor: color,
-  borderTopColor: color,
-  borderRightColor: color,
-  borderBottomColor: color,
-  borderLeftColor: color,
-  filter,
-  WebkitFilter: filter,
-  mask,
-  WebkitMask: mask
-};
-const getDefaultValueType = (key) => defaultValueTypes[key];
-const customTypes = /* @__PURE__ */ new Set([filter, mask]);
-function getAnimatableNone(key, value) {
-  let defaultValueType = getDefaultValueType(key);
-  if (!customTypes.has(defaultValueType))
-    defaultValueType = complex;
-  return defaultValueType.getAnimatableNone ? defaultValueType.getAnimatableNone(value) : void 0;
-}
-const invalidTemplates = /* @__PURE__ */ new Set(["auto", "none", "0"]);
-function makeNoneKeyframesAnimatable(unresolvedKeyframes, noneKeyframeIndexes, name) {
-  let i2 = 0;
-  let animatableTemplate = void 0;
-  while (i2 < unresolvedKeyframes.length && !animatableTemplate) {
-    const keyframe = unresolvedKeyframes[i2];
-    if (typeof keyframe === "string" && !invalidTemplates.has(keyframe) && analyseComplexValue(keyframe).values.length) {
-      animatableTemplate = unresolvedKeyframes[i2];
-    }
-    i2++;
-  }
-  if (animatableTemplate && name) {
-    for (const noneIndex of noneKeyframeIndexes) {
-      unresolvedKeyframes[noneIndex] = getAnimatableNone(name, animatableTemplate);
-    }
-  }
-}
-class DOMKeyframesResolver extends KeyframeResolver {
-  constructor(unresolvedKeyframes, onComplete, name, motionValue2, element) {
-    super(unresolvedKeyframes, onComplete, name, motionValue2, element, true);
-  }
-  readKeyframes() {
-    const { unresolvedKeyframes, element, name } = this;
-    if (!element || !element.current)
-      return;
-    super.readKeyframes();
-    for (let i2 = 0; i2 < unresolvedKeyframes.length; i2++) {
-      let keyframe = unresolvedKeyframes[i2];
-      if (typeof keyframe === "string") {
-        keyframe = keyframe.trim();
-        if (isCSSVariableToken(keyframe)) {
-          const resolved = getVariableValue(keyframe, element.current);
-          if (resolved !== void 0) {
-            unresolvedKeyframes[i2] = resolved;
-          }
-          if (i2 === unresolvedKeyframes.length - 1) {
-            this.finalKeyframe = keyframe;
-          }
-        }
-      }
-    }
-    this.resolveNoneKeyframes();
-    if (!positionalKeys.has(name) || unresolvedKeyframes.length !== 2) {
-      return;
-    }
-    const [origin, target] = unresolvedKeyframes;
-    const originType = findDimensionValueType(origin);
-    const targetType = findDimensionValueType(target);
-    const originHasVar = containsCSSVariable(origin);
-    const targetHasVar = containsCSSVariable(target);
-    if (originHasVar !== targetHasVar && positionalValues[name]) {
-      this.needsMeasurement = true;
-      return;
-    }
-    if (originType === targetType)
-      return;
-    if (isNumOrPxType(originType) && isNumOrPxType(targetType)) {
-      for (let i2 = 0; i2 < unresolvedKeyframes.length; i2++) {
-        const value = unresolvedKeyframes[i2];
-        if (typeof value === "string") {
-          unresolvedKeyframes[i2] = parseFloat(value);
-        }
-      }
-    } else if (positionalValues[name]) {
-      this.needsMeasurement = true;
-    }
-  }
-  resolveNoneKeyframes() {
-    const { unresolvedKeyframes, name } = this;
-    const noneKeyframeIndexes = [];
-    for (let i2 = 0; i2 < unresolvedKeyframes.length; i2++) {
-      if (unresolvedKeyframes[i2] === null || isNone(unresolvedKeyframes[i2])) {
-        noneKeyframeIndexes.push(i2);
-      }
-    }
-    if (noneKeyframeIndexes.length) {
-      makeNoneKeyframesAnimatable(unresolvedKeyframes, noneKeyframeIndexes, name);
-    }
-  }
-  measureInitialState() {
-    const { element, unresolvedKeyframes, name } = this;
-    if (!element || !element.current)
-      return;
-    if (name === "height") {
-      this.suspendedScrollY = window.pageYOffset;
-    }
-    this.measuredOrigin = positionalValues[name](element.measureViewportBox(), window.getComputedStyle(element.current));
-    unresolvedKeyframes[0] = this.measuredOrigin;
-    const measureKeyframe = unresolvedKeyframes[unresolvedKeyframes.length - 1];
-    if (measureKeyframe !== void 0) {
-      element.getValue(name, measureKeyframe).jump(measureKeyframe, false);
-    }
-  }
-  measureEndState() {
-    var _a3;
-    const { element, name, unresolvedKeyframes } = this;
-    if (!element || !element.current)
-      return;
-    const value = element.getValue(name);
-    value && value.jump(this.measuredOrigin, false);
-    const finalKeyframeIndex = unresolvedKeyframes.length - 1;
-    const finalKeyframe = unresolvedKeyframes[finalKeyframeIndex];
-    unresolvedKeyframes[finalKeyframeIndex] = positionalValues[name](element.measureViewportBox(), window.getComputedStyle(element.current));
-    if (finalKeyframe !== null && this.finalKeyframe === void 0) {
-      this.finalKeyframe = finalKeyframe;
-    }
-    if ((_a3 = this.removedTransforms) == null ? void 0 : _a3.length) {
-      this.removedTransforms.forEach(([unsetTransformName, unsetTransformValue]) => {
-        element.getValue(unsetTransformName).set(unsetTransformValue);
-      });
-    }
-    this.resolveNoneKeyframes();
-  }
-}
-function resolveElements(elementOrSelector, scope, selectorCache) {
-  if (elementOrSelector == null) {
-    return [];
-  }
-  if (elementOrSelector instanceof EventTarget) {
-    return [elementOrSelector];
-  } else if (typeof elementOrSelector === "string") {
-    let root2 = document;
-    const elements = (selectorCache == null ? void 0 : selectorCache[elementOrSelector]) ?? root2.querySelectorAll(elementOrSelector);
-    return elements ? Array.from(elements) : [];
-  }
-  return Array.from(elementOrSelector).filter((element) => element != null);
-}
-const getValueAsType = (value, type) => {
-  return type && typeof value === "number" ? type.transform(value) : value;
-};
-function isHTMLElement$1(element) {
-  return isObject$1(element) && "offsetHeight" in element && !("ownerSVGElement" in element);
-}
-const { schedule: microtask } = /* @__PURE__ */ createRenderBatcher(queueMicrotask, false);
-const isDragging = {
-  x: false,
-  y: false
-};
-function isDragActive() {
-  return isDragging.x || isDragging.y;
-}
-function setDragLock(axis) {
-  if (axis === "x" || axis === "y") {
-    if (isDragging[axis]) {
-      return null;
-    } else {
-      isDragging[axis] = true;
-      return () => {
-        isDragging[axis] = false;
-      };
-    }
-  } else {
-    if (isDragging.x || isDragging.y) {
-      return null;
-    } else {
-      isDragging.x = isDragging.y = true;
-      return () => {
-        isDragging.x = isDragging.y = false;
-      };
-    }
-  }
-}
-function setupGesture(elementOrSelector, options) {
-  const elements = resolveElements(elementOrSelector);
-  const gestureAbortController = new AbortController();
-  const eventOptions = {
-    passive: true,
-    ...options,
-    signal: gestureAbortController.signal
-  };
-  const cancel = () => gestureAbortController.abort();
-  return [elements, eventOptions, cancel];
-}
-function isValidHover(event) {
-  return !(event.pointerType === "touch" || isDragActive());
-}
-function hover(elementOrSelector, onHoverStart, options = {}) {
-  const [elements, eventOptions, cancel] = setupGesture(elementOrSelector, options);
-  elements.forEach((element) => {
-    let isPressed = false;
-    let deferredHoverEnd = false;
-    let hoverEndCallback;
-    const removePointerLeave = () => {
-      element.removeEventListener("pointerleave", onPointerLeave);
-    };
-    const endHover = (event) => {
-      if (hoverEndCallback) {
-        hoverEndCallback(event);
-        hoverEndCallback = void 0;
-      }
-      removePointerLeave();
-    };
-    const onPointerUp = (event) => {
-      isPressed = false;
-      window.removeEventListener("pointerup", onPointerUp);
-      window.removeEventListener("pointercancel", onPointerUp);
-      if (deferredHoverEnd) {
-        deferredHoverEnd = false;
-        endHover(event);
-      }
-    };
-    const onPointerDown = () => {
-      isPressed = true;
-      window.addEventListener("pointerup", onPointerUp, eventOptions);
-      window.addEventListener("pointercancel", onPointerUp, eventOptions);
-    };
-    const onPointerLeave = (leaveEvent) => {
-      if (leaveEvent.pointerType === "touch")
-        return;
-      if (isPressed) {
-        deferredHoverEnd = true;
-        return;
-      }
-      endHover(leaveEvent);
-    };
-    const onPointerEnter = (enterEvent) => {
-      if (!isValidHover(enterEvent))
-        return;
-      deferredHoverEnd = false;
-      const onHoverEnd = onHoverStart(element, enterEvent);
-      if (typeof onHoverEnd !== "function")
-        return;
-      hoverEndCallback = onHoverEnd;
-      element.addEventListener("pointerleave", onPointerLeave, eventOptions);
-    };
-    element.addEventListener("pointerenter", onPointerEnter, eventOptions);
-    element.addEventListener("pointerdown", onPointerDown, eventOptions);
-  });
-  return cancel;
-}
-const isNodeOrChild = (parent, child) => {
-  if (!child) {
-    return false;
-  } else if (parent === child) {
-    return true;
-  } else {
-    return isNodeOrChild(parent, child.parentElement);
-  }
-};
-const isPrimaryPointer = (event) => {
-  if (event.pointerType === "mouse") {
-    return typeof event.button !== "number" || event.button <= 0;
-  } else {
-    return event.isPrimary !== false;
-  }
-};
-const keyboardAccessibleElements = /* @__PURE__ */ new Set([
-  "BUTTON",
-  "INPUT",
-  "SELECT",
-  "TEXTAREA",
-  "A"
-]);
-function isElementKeyboardAccessible(element) {
-  return keyboardAccessibleElements.has(element.tagName) || element.isContentEditable === true;
-}
-const textInputElements = /* @__PURE__ */ new Set(["INPUT", "SELECT", "TEXTAREA"]);
-function isElementTextInput(element) {
-  return textInputElements.has(element.tagName) || element.isContentEditable === true;
-}
-const isPressing = /* @__PURE__ */ new WeakSet();
-function filterEvents(callback) {
-  return (event) => {
-    if (event.key !== "Enter")
-      return;
-    callback(event);
-  };
-}
-function firePointerEvent(target, type) {
-  target.dispatchEvent(new PointerEvent("pointer" + type, { isPrimary: true, bubbles: true }));
-}
-const enableKeyboardPress = (focusEvent, eventOptions) => {
-  const element = focusEvent.currentTarget;
-  if (!element)
-    return;
-  const handleKeydown = filterEvents(() => {
-    if (isPressing.has(element))
-      return;
-    firePointerEvent(element, "down");
-    const handleKeyup = filterEvents(() => {
-      firePointerEvent(element, "up");
-    });
-    const handleBlur = () => firePointerEvent(element, "cancel");
-    element.addEventListener("keyup", handleKeyup, eventOptions);
-    element.addEventListener("blur", handleBlur, eventOptions);
-  });
-  element.addEventListener("keydown", handleKeydown, eventOptions);
-  element.addEventListener("blur", () => element.removeEventListener("keydown", handleKeydown), eventOptions);
-};
-function isValidPressEvent(event) {
-  return isPrimaryPointer(event) && !isDragActive();
-}
-const claimedPointerDownEvents = /* @__PURE__ */ new WeakSet();
-function press(targetOrSelector, onPressStart, options = {}) {
-  const [targets, eventOptions, cancelEvents] = setupGesture(targetOrSelector, options);
-  const startPress = (startEvent) => {
-    const target = startEvent.currentTarget;
-    if (!isValidPressEvent(startEvent))
-      return;
-    if (claimedPointerDownEvents.has(startEvent))
-      return;
-    isPressing.add(target);
-    if (options.stopPropagation) {
-      claimedPointerDownEvents.add(startEvent);
-    }
-    const onPressEnd = onPressStart(target, startEvent);
-    const onPointerEnd = (endEvent, success) => {
-      window.removeEventListener("pointerup", onPointerUp);
-      window.removeEventListener("pointercancel", onPointerCancel);
-      if (isPressing.has(target)) {
-        isPressing.delete(target);
-      }
-      if (!isValidPressEvent(endEvent)) {
-        return;
-      }
-      if (typeof onPressEnd === "function") {
-        onPressEnd(endEvent, { success });
-      }
-    };
-    const onPointerUp = (upEvent) => {
-      onPointerEnd(upEvent, target === window || target === document || options.useGlobalTarget || isNodeOrChild(target, upEvent.target));
-    };
-    const onPointerCancel = (cancelEvent) => {
-      onPointerEnd(cancelEvent, false);
-    };
-    window.addEventListener("pointerup", onPointerUp, eventOptions);
-    window.addEventListener("pointercancel", onPointerCancel, eventOptions);
-  };
-  targets.forEach((target) => {
-    const pointerDownTarget = options.useGlobalTarget ? window : target;
-    pointerDownTarget.addEventListener("pointerdown", startPress, eventOptions);
-    if (isHTMLElement$1(target)) {
-      target.addEventListener("focus", (event) => enableKeyboardPress(event, eventOptions));
-      if (!isElementKeyboardAccessible(target) && !target.hasAttribute("tabindex")) {
-        target.tabIndex = 0;
-      }
-    }
-  });
-  return cancelEvents;
-}
-function isSVGElement(element) {
-  return isObject$1(element) && "ownerSVGElement" in element;
-}
-const resizeHandlers = /* @__PURE__ */ new WeakMap();
-let observer;
-const getSize = (borderBoxAxis, svgAxis, htmlAxis) => (target, borderBoxSize) => {
-  if (borderBoxSize && borderBoxSize[0]) {
-    return borderBoxSize[0][borderBoxAxis + "Size"];
-  } else if (isSVGElement(target) && "getBBox" in target) {
-    return target.getBBox()[svgAxis];
-  } else {
-    return target[htmlAxis];
-  }
-};
-const getWidth = /* @__PURE__ */ getSize("inline", "width", "offsetWidth");
-const getHeight = /* @__PURE__ */ getSize("block", "height", "offsetHeight");
-function notifyTarget({ target, borderBoxSize }) {
-  var _a3;
-  (_a3 = resizeHandlers.get(target)) == null ? void 0 : _a3.forEach((handler) => {
-    handler(target, {
-      get width() {
-        return getWidth(target, borderBoxSize);
-      },
-      get height() {
-        return getHeight(target, borderBoxSize);
-      }
-    });
-  });
-}
-function notifyAll(entries) {
-  entries.forEach(notifyTarget);
-}
-function createResizeObserver() {
-  if (typeof ResizeObserver === "undefined")
-    return;
-  observer = new ResizeObserver(notifyAll);
-}
-function resizeElement(target, handler) {
-  if (!observer)
-    createResizeObserver();
-  const elements = resolveElements(target);
-  elements.forEach((element) => {
-    let elementHandlers = resizeHandlers.get(element);
-    if (!elementHandlers) {
-      elementHandlers = /* @__PURE__ */ new Set();
-      resizeHandlers.set(element, elementHandlers);
-    }
-    elementHandlers.add(handler);
-    observer == null ? void 0 : observer.observe(element);
-  });
-  return () => {
-    elements.forEach((element) => {
-      const elementHandlers = resizeHandlers.get(element);
-      elementHandlers == null ? void 0 : elementHandlers.delete(handler);
-      if (!(elementHandlers == null ? void 0 : elementHandlers.size)) {
-        observer == null ? void 0 : observer.unobserve(element);
-      }
-    });
-  };
-}
-const windowCallbacks = /* @__PURE__ */ new Set();
-let windowResizeHandler;
-function createWindowResizeHandler() {
-  windowResizeHandler = () => {
-    const info = {
-      get width() {
-        return window.innerWidth;
-      },
-      get height() {
-        return window.innerHeight;
-      }
-    };
-    windowCallbacks.forEach((callback) => callback(info));
-  };
-  window.addEventListener("resize", windowResizeHandler);
-}
-function resizeWindow(callback) {
-  windowCallbacks.add(callback);
-  if (!windowResizeHandler)
-    createWindowResizeHandler();
-  return () => {
-    windowCallbacks.delete(callback);
-    if (!windowCallbacks.size && typeof windowResizeHandler === "function") {
-      window.removeEventListener("resize", windowResizeHandler);
-      windowResizeHandler = void 0;
-    }
-  };
-}
-function resize(a2, b2) {
-  return typeof a2 === "function" ? resizeWindow(a2) : resizeElement(a2, b2);
-}
-function isSVGSVGElement(element) {
-  return isSVGElement(element) && element.tagName === "svg";
-}
-const valueTypes = [...dimensionValueTypes, color, complex];
-const findValueType = (v2) => valueTypes.find(testValueType(v2));
-const createAxisDelta = () => ({
-  translate: 0,
-  scale: 1,
-  origin: 0,
-  originPoint: 0
-});
-const createDelta = () => ({
-  x: createAxisDelta(),
-  y: createAxisDelta()
-});
-const createAxis = () => ({ min: 0, max: 0 });
-const createBox = () => ({
-  x: createAxis(),
-  y: createAxis()
-});
-const visualElementStore = /* @__PURE__ */ new WeakMap();
-function isAnimationControls(v2) {
-  return v2 !== null && typeof v2 === "object" && typeof v2.start === "function";
-}
-function isVariantLabel(v2) {
-  return typeof v2 === "string" || Array.isArray(v2);
-}
-const variantPriorityOrder = [
-  "animate",
-  "whileInView",
-  "whileFocus",
-  "whileHover",
-  "whileTap",
-  "whileDrag",
-  "exit"
-];
-const variantProps = ["initial", ...variantPriorityOrder];
-function isControllingVariants(props) {
-  return isAnimationControls(props.animate) || variantProps.some((name) => isVariantLabel(props[name]));
-}
-function isVariantNode(props) {
-  return Boolean(isControllingVariants(props) || props.variants);
-}
-function updateMotionValuesFromProps(element, next, prev) {
-  for (const key in next) {
-    const nextValue = next[key];
-    const prevValue = prev[key];
-    if (isMotionValue(nextValue)) {
-      element.addValue(key, nextValue);
-    } else if (isMotionValue(prevValue)) {
-      element.addValue(key, motionValue(nextValue, { owner: element }));
-    } else if (prevValue !== nextValue) {
-      if (element.hasValue(key)) {
-        const existingValue = element.getValue(key);
-        if (existingValue.liveStyle === true) {
-          existingValue.jump(nextValue);
-        } else if (!existingValue.hasAnimated) {
-          existingValue.set(nextValue);
-        }
-      } else {
-        const latestValue = element.getStaticValue(key);
-        element.addValue(key, motionValue(latestValue !== void 0 ? latestValue : nextValue, { owner: element }));
-      }
-    }
-  }
-  for (const key in prev) {
-    if (next[key] === void 0)
-      element.removeValue(key);
-  }
-  return next;
-}
-const prefersReducedMotion = { current: null };
-const hasReducedMotionListener = { current: false };
-const isBrowser = typeof window !== "undefined";
-function initPrefersReducedMotion() {
-  hasReducedMotionListener.current = true;
-  if (!isBrowser)
-    return;
-  if (window.matchMedia) {
-    const motionMediaQuery = window.matchMedia("(prefers-reduced-motion)");
-    const setReducedMotionPreferences = () => prefersReducedMotion.current = motionMediaQuery.matches;
-    motionMediaQuery.addEventListener("change", setReducedMotionPreferences);
-    setReducedMotionPreferences();
-  } else {
-    prefersReducedMotion.current = false;
-  }
-}
-const propEventHandlers = [
-  "AnimationStart",
-  "AnimationComplete",
-  "Update",
-  "BeforeLayoutMeasure",
-  "LayoutMeasure",
-  "LayoutAnimationStart",
-  "LayoutAnimationComplete"
-];
-let featureDefinitions = {};
-function setFeatureDefinitions(definitions) {
-  featureDefinitions = definitions;
-}
-function getFeatureDefinitions() {
-  return featureDefinitions;
-}
-class VisualElement {
-  /**
-   * This method takes React props and returns found MotionValues. For example, HTML
-   * MotionValues will be found within the style prop, whereas for Three.js within attribute arrays.
-   *
-   * This isn't an abstract method as it needs calling in the constructor, but it is
-   * intended to be one.
-   */
-  scrapeMotionValuesFromProps(_props, _prevProps, _visualElement) {
-    return {};
-  }
-  constructor({ parent, props, presenceContext, reducedMotionConfig, skipAnimations, blockInitialAnimation, visualState }, options = {}) {
-    this.current = null;
-    this.children = /* @__PURE__ */ new Set();
-    this.isVariantNode = false;
-    this.isControllingVariants = false;
-    this.shouldReduceMotion = null;
-    this.shouldSkipAnimations = false;
-    this.values = /* @__PURE__ */ new Map();
-    this.KeyframeResolver = KeyframeResolver;
-    this.features = {};
-    this.valueSubscriptions = /* @__PURE__ */ new Map();
-    this.prevMotionValues = {};
-    this.hasBeenMounted = false;
-    this.events = {};
-    this.propEventSubscriptions = {};
-    this.notifyUpdate = () => this.notify("Update", this.latestValues);
-    this.render = () => {
-      if (!this.current)
-        return;
-      this.triggerBuild();
-      this.renderInstance(this.current, this.renderState, this.props.style, this.projection);
-    };
-    this.renderScheduledAt = 0;
-    this.scheduleRender = () => {
-      const now2 = time.now();
-      if (this.renderScheduledAt < now2) {
-        this.renderScheduledAt = now2;
-        frame.render(this.render, false, true);
-      }
-    };
-    const { latestValues, renderState } = visualState;
-    this.latestValues = latestValues;
-    this.baseTarget = { ...latestValues };
-    this.initialValues = props.initial ? { ...latestValues } : {};
-    this.renderState = renderState;
-    this.parent = parent;
-    this.props = props;
-    this.presenceContext = presenceContext;
-    this.depth = parent ? parent.depth + 1 : 0;
-    this.reducedMotionConfig = reducedMotionConfig;
-    this.skipAnimationsConfig = skipAnimations;
-    this.options = options;
-    this.blockInitialAnimation = Boolean(blockInitialAnimation);
-    this.isControllingVariants = isControllingVariants(props);
-    this.isVariantNode = isVariantNode(props);
-    if (this.isVariantNode) {
-      this.variantChildren = /* @__PURE__ */ new Set();
-    }
-    this.manuallyAnimateOnMount = Boolean(parent && parent.current);
-    const { willChange, ...initialMotionValues } = this.scrapeMotionValuesFromProps(props, {}, this);
-    for (const key in initialMotionValues) {
-      const value = initialMotionValues[key];
-      if (latestValues[key] !== void 0 && isMotionValue(value)) {
-        value.set(latestValues[key]);
-      }
-    }
-  }
-  mount(instance) {
-    var _a3, _b3;
-    if (this.hasBeenMounted) {
-      for (const key in this.initialValues) {
-        (_a3 = this.values.get(key)) == null ? void 0 : _a3.jump(this.initialValues[key]);
-        this.latestValues[key] = this.initialValues[key];
-      }
-    }
-    this.current = instance;
-    visualElementStore.set(instance, this);
-    if (this.projection && !this.projection.instance) {
-      this.projection.mount(instance);
-    }
-    if (this.parent && this.isVariantNode && !this.isControllingVariants) {
-      this.removeFromVariantTree = this.parent.addVariantChild(this);
-    }
-    this.values.forEach((value, key) => this.bindToMotionValue(key, value));
-    if (this.reducedMotionConfig === "never") {
-      this.shouldReduceMotion = false;
-    } else if (this.reducedMotionConfig === "always") {
-      this.shouldReduceMotion = true;
-    } else {
-      if (!hasReducedMotionListener.current) {
-        initPrefersReducedMotion();
-      }
-      this.shouldReduceMotion = prefersReducedMotion.current;
-    }
-    this.shouldSkipAnimations = this.skipAnimationsConfig ?? false;
-    (_b3 = this.parent) == null ? void 0 : _b3.addChild(this);
-    this.update(this.props, this.presenceContext);
-    this.hasBeenMounted = true;
-  }
-  unmount() {
-    var _a3;
-    this.projection && this.projection.unmount();
-    cancelFrame(this.notifyUpdate);
-    cancelFrame(this.render);
-    this.valueSubscriptions.forEach((remove) => remove());
-    this.valueSubscriptions.clear();
-    this.removeFromVariantTree && this.removeFromVariantTree();
-    (_a3 = this.parent) == null ? void 0 : _a3.removeChild(this);
-    for (const key in this.events) {
-      this.events[key].clear();
-    }
-    for (const key in this.features) {
-      const feature = this.features[key];
-      if (feature) {
-        feature.unmount();
-        feature.isMounted = false;
-      }
-    }
-    this.current = null;
-  }
-  addChild(child) {
-    this.children.add(child);
-    this.enteringChildren ?? (this.enteringChildren = /* @__PURE__ */ new Set());
-    this.enteringChildren.add(child);
-  }
-  removeChild(child) {
-    this.children.delete(child);
-    this.enteringChildren && this.enteringChildren.delete(child);
-  }
-  bindToMotionValue(key, value) {
-    if (this.valueSubscriptions.has(key)) {
-      this.valueSubscriptions.get(key)();
-    }
-    if (value.accelerate && acceleratedValues.has(key) && this.current instanceof HTMLElement) {
-      const { factory, keyframes: keyframes2, times, ease: ease2, duration } = value.accelerate;
-      const animation = new NativeAnimation({
-        element: this.current,
-        name: key,
-        keyframes: keyframes2,
-        times,
-        ease: ease2,
-        duration: /* @__PURE__ */ secondsToMilliseconds(duration)
-      });
-      const cleanup = factory(animation);
-      this.valueSubscriptions.set(key, () => {
-        cleanup();
-        animation.cancel();
-      });
-      return;
-    }
-    const valueIsTransform = transformProps.has(key);
-    if (valueIsTransform && this.onBindTransform) {
-      this.onBindTransform();
-    }
-    const removeOnChange = value.on("change", (latestValue) => {
-      this.latestValues[key] = latestValue;
-      this.props.onUpdate && frame.preRender(this.notifyUpdate);
-      if (valueIsTransform && this.projection) {
-        this.projection.isTransformDirty = true;
-      }
-      this.scheduleRender();
-    });
-    let removeSyncCheck;
-    if (typeof window !== "undefined" && window.MotionCheckAppearSync) {
-      removeSyncCheck = window.MotionCheckAppearSync(this, key, value);
-    }
-    this.valueSubscriptions.set(key, () => {
-      removeOnChange();
-      if (removeSyncCheck)
-        removeSyncCheck();
-      if (value.owner)
-        value.stop();
-    });
-  }
-  sortNodePosition(other) {
-    if (!this.current || !this.sortInstanceNodePosition || this.type !== other.type) {
-      return 0;
-    }
-    return this.sortInstanceNodePosition(this.current, other.current);
-  }
-  updateFeatures() {
-    let key = "animation";
-    for (key in featureDefinitions) {
-      const featureDefinition = featureDefinitions[key];
-      if (!featureDefinition)
-        continue;
-      const { isEnabled, Feature: FeatureConstructor } = featureDefinition;
-      if (!this.features[key] && FeatureConstructor && isEnabled(this.props)) {
-        this.features[key] = new FeatureConstructor(this);
-      }
-      if (this.features[key]) {
-        const feature = this.features[key];
-        if (feature.isMounted) {
-          feature.update();
-        } else {
-          feature.mount();
-          feature.isMounted = true;
-        }
-      }
-    }
-  }
-  triggerBuild() {
-    this.build(this.renderState, this.latestValues, this.props);
-  }
-  /**
-   * Measure the current viewport box with or without transforms.
-   * Only measures axis-aligned boxes, rotate and skew must be manually
-   * removed with a re-render to work.
-   */
-  measureViewportBox() {
-    return this.current ? this.measureInstanceViewportBox(this.current, this.props) : createBox();
-  }
-  getStaticValue(key) {
-    return this.latestValues[key];
-  }
-  setStaticValue(key, value) {
-    this.latestValues[key] = value;
-  }
-  /**
-   * Update the provided props. Ensure any newly-added motion values are
-   * added to our map, old ones removed, and listeners updated.
-   */
-  update(props, presenceContext) {
-    if (props.transformTemplate || this.props.transformTemplate) {
-      this.scheduleRender();
-    }
-    this.prevProps = this.props;
-    this.props = props;
-    this.prevPresenceContext = this.presenceContext;
-    this.presenceContext = presenceContext;
-    for (let i2 = 0; i2 < propEventHandlers.length; i2++) {
-      const key = propEventHandlers[i2];
-      if (this.propEventSubscriptions[key]) {
-        this.propEventSubscriptions[key]();
-        delete this.propEventSubscriptions[key];
-      }
-      const listenerName = "on" + key;
-      const listener = props[listenerName];
-      if (listener) {
-        this.propEventSubscriptions[key] = this.on(key, listener);
-      }
-    }
-    this.prevMotionValues = updateMotionValuesFromProps(this, this.scrapeMotionValuesFromProps(props, this.prevProps || {}, this), this.prevMotionValues);
-    if (this.handleChildMotionValue) {
-      this.handleChildMotionValue();
-    }
-  }
-  getProps() {
-    return this.props;
-  }
-  /**
-   * Returns the variant definition with a given name.
-   */
-  getVariant(name) {
-    return this.props.variants ? this.props.variants[name] : void 0;
-  }
-  /**
-   * Returns the defined default transition on this component.
-   */
-  getDefaultTransition() {
-    return this.props.transition;
-  }
-  getTransformPagePoint() {
-    return this.props.transformPagePoint;
-  }
-  getClosestVariantNode() {
-    return this.isVariantNode ? this : this.parent ? this.parent.getClosestVariantNode() : void 0;
-  }
-  /**
-   * Add a child visual element to our set of children.
-   */
-  addVariantChild(child) {
-    const closestVariantNode = this.getClosestVariantNode();
-    if (closestVariantNode) {
-      closestVariantNode.variantChildren && closestVariantNode.variantChildren.add(child);
-      return () => closestVariantNode.variantChildren.delete(child);
-    }
-  }
-  /**
-   * Add a motion value and bind it to this visual element.
-   */
-  addValue(key, value) {
-    const existingValue = this.values.get(key);
-    if (value !== existingValue) {
-      if (existingValue)
-        this.removeValue(key);
-      this.bindToMotionValue(key, value);
-      this.values.set(key, value);
-      this.latestValues[key] = value.get();
-    }
-  }
-  /**
-   * Remove a motion value and unbind any active subscriptions.
-   */
-  removeValue(key) {
-    this.values.delete(key);
-    const unsubscribe = this.valueSubscriptions.get(key);
-    if (unsubscribe) {
-      unsubscribe();
-      this.valueSubscriptions.delete(key);
-    }
-    delete this.latestValues[key];
-    this.removeValueFromRenderState(key, this.renderState);
-  }
-  /**
-   * Check whether we have a motion value for this key
-   */
-  hasValue(key) {
-    return this.values.has(key);
-  }
-  getValue(key, defaultValue) {
-    if (this.props.values && this.props.values[key]) {
-      return this.props.values[key];
-    }
-    let value = this.values.get(key);
-    if (value === void 0 && defaultValue !== void 0) {
-      value = motionValue(defaultValue === null ? void 0 : defaultValue, { owner: this });
-      this.addValue(key, value);
-    }
-    return value;
-  }
-  /**
-   * If we're trying to animate to a previously unencountered value,
-   * we need to check for it in our state and as a last resort read it
-   * directly from the instance (which might have performance implications).
-   */
-  readValue(key, target) {
-    let value = this.latestValues[key] !== void 0 || !this.current ? this.latestValues[key] : this.getBaseTargetFromProps(this.props, key) ?? this.readValueFromInstance(this.current, key, this.options);
-    if (value !== void 0 && value !== null) {
-      if (typeof value === "string" && (isNumericalString(value) || isZeroValueString(value))) {
-        value = parseFloat(value);
-      } else if (!findValueType(value) && complex.test(target)) {
-        value = getAnimatableNone(key, target);
-      }
-      this.setBaseTarget(key, isMotionValue(value) ? value.get() : value);
-    }
-    return isMotionValue(value) ? value.get() : value;
-  }
-  /**
-   * Set the base target to later animate back to. This is currently
-   * only hydrated on creation and when we first read a value.
-   */
-  setBaseTarget(key, value) {
-    this.baseTarget[key] = value;
-  }
-  /**
-   * Find the base target for a value thats been removed from all animation
-   * props.
-   */
-  getBaseTarget(key) {
-    var _a3;
-    const { initial } = this.props;
-    let valueFromInitial;
-    if (typeof initial === "string" || typeof initial === "object") {
-      const variant = resolveVariantFromProps(this.props, initial, (_a3 = this.presenceContext) == null ? void 0 : _a3.custom);
-      if (variant) {
-        valueFromInitial = variant[key];
-      }
-    }
-    if (initial && valueFromInitial !== void 0) {
-      return valueFromInitial;
-    }
-    const target = this.getBaseTargetFromProps(this.props, key);
-    if (target !== void 0 && !isMotionValue(target))
-      return target;
-    return this.initialValues[key] !== void 0 && valueFromInitial === void 0 ? void 0 : this.baseTarget[key];
-  }
-  on(eventName, callback) {
-    if (!this.events[eventName]) {
-      this.events[eventName] = new SubscriptionManager();
-    }
-    return this.events[eventName].add(callback);
-  }
-  notify(eventName, ...args) {
-    if (this.events[eventName]) {
-      this.events[eventName].notify(...args);
-    }
-  }
-  scheduleRenderMicrotask() {
-    microtask.render(this.render);
-  }
-}
-class DOMVisualElement extends VisualElement {
-  constructor() {
-    super(...arguments);
-    this.KeyframeResolver = DOMKeyframesResolver;
-  }
-  sortInstanceNodePosition(a2, b2) {
-    return a2.compareDocumentPosition(b2) & 2 ? 1 : -1;
-  }
-  getBaseTargetFromProps(props, key) {
-    const style2 = props.style;
-    return style2 ? style2[key] : void 0;
-  }
-  removeValueFromRenderState(key, { vars, style: style2 }) {
-    delete vars[key];
-    delete style2[key];
-  }
-  handleChildMotionValue() {
-    if (this.childSubscription) {
-      this.childSubscription();
-      delete this.childSubscription;
-    }
-    const { children } = this.props;
-    if (isMotionValue(children)) {
-      this.childSubscription = children.on("change", (latest) => {
-        if (this.current) {
-          this.current.textContent = `${latest}`;
-        }
-      });
-    }
-  }
-}
-class Feature {
-  constructor(node) {
-    this.isMounted = false;
-    this.node = node;
-  }
-  update() {
-  }
-}
-function convertBoundingBoxToBox({ top, left, right, bottom }) {
-  return {
-    x: { min: left, max: right },
-    y: { min: top, max: bottom }
-  };
-}
-function convertBoxToBoundingBox({ x: x3, y: y2 }) {
-  return { top: y2.min, right: x3.max, bottom: y2.max, left: x3.min };
-}
-function transformBoxPoints(point2, transformPoint2) {
-  if (!transformPoint2)
-    return point2;
-  const topLeft = transformPoint2({ x: point2.left, y: point2.top });
-  const bottomRight = transformPoint2({ x: point2.right, y: point2.bottom });
-  return {
-    top: topLeft.y,
-    left: topLeft.x,
-    bottom: bottomRight.y,
-    right: bottomRight.x
-  };
-}
-function isIdentityScale(scale2) {
-  return scale2 === void 0 || scale2 === 1;
-}
-function hasScale({ scale: scale2, scaleX: scaleX2, scaleY: scaleY2 }) {
-  return !isIdentityScale(scale2) || !isIdentityScale(scaleX2) || !isIdentityScale(scaleY2);
-}
-function hasTransform(values) {
-  return hasScale(values) || has2DTranslate(values) || values.z || values.rotate || values.rotateX || values.rotateY || values.skewX || values.skewY;
-}
-function has2DTranslate(values) {
-  return is2DTranslate(values.x) || is2DTranslate(values.y);
-}
-function is2DTranslate(value) {
-  return value && value !== "0%";
-}
-function scalePoint(point2, scale2, originPoint) {
-  const distanceFromOrigin = point2 - originPoint;
-  const scaled = scale2 * distanceFromOrigin;
-  return originPoint + scaled;
-}
-function applyPointDelta(point2, translate, scale2, originPoint, boxScale) {
-  if (boxScale !== void 0) {
-    point2 = scalePoint(point2, boxScale, originPoint);
-  }
-  return scalePoint(point2, scale2, originPoint) + translate;
-}
-function applyAxisDelta(axis, translate = 0, scale2 = 1, originPoint, boxScale) {
-  axis.min = applyPointDelta(axis.min, translate, scale2, originPoint, boxScale);
-  axis.max = applyPointDelta(axis.max, translate, scale2, originPoint, boxScale);
-}
-function applyBoxDelta(box, { x: x3, y: y2 }) {
-  applyAxisDelta(box.x, x3.translate, x3.scale, x3.originPoint);
-  applyAxisDelta(box.y, y2.translate, y2.scale, y2.originPoint);
-}
-const TREE_SCALE_SNAP_MIN = 0.999999999999;
-const TREE_SCALE_SNAP_MAX = 1.0000000000001;
-function applyTreeDeltas(box, treeScale, treePath, isSharedTransition = false) {
-  var _a3;
-  const treeLength = treePath.length;
-  if (!treeLength)
-    return;
-  treeScale.x = treeScale.y = 1;
-  let node;
-  let delta;
-  for (let i2 = 0; i2 < treeLength; i2++) {
-    node = treePath[i2];
-    delta = node.projectionDelta;
-    const { visualElement } = node.options;
-    if (visualElement && visualElement.props.style && visualElement.props.style.display === "contents") {
-      continue;
-    }
-    if (isSharedTransition && node.options.layoutScroll && node.scroll && node !== node.root) {
-      translateAxis(box.x, -node.scroll.offset.x);
-      translateAxis(box.y, -node.scroll.offset.y);
-    }
-    if (delta) {
-      treeScale.x *= delta.x.scale;
-      treeScale.y *= delta.y.scale;
-      applyBoxDelta(box, delta);
-    }
-    if (isSharedTransition && hasTransform(node.latestValues)) {
-      transformBox(box, node.latestValues, (_a3 = node.layout) == null ? void 0 : _a3.layoutBox);
-    }
-  }
-  if (treeScale.x < TREE_SCALE_SNAP_MAX && treeScale.x > TREE_SCALE_SNAP_MIN) {
-    treeScale.x = 1;
-  }
-  if (treeScale.y < TREE_SCALE_SNAP_MAX && treeScale.y > TREE_SCALE_SNAP_MIN) {
-    treeScale.y = 1;
-  }
-}
-function translateAxis(axis, distance2) {
-  axis.min += distance2;
-  axis.max += distance2;
-}
-function transformAxis(axis, axisTranslate, axisScale, boxScale, axisOrigin = 0.5) {
-  const originPoint = mixNumber$1(axis.min, axis.max, axisOrigin);
-  applyAxisDelta(axis, axisTranslate, axisScale, originPoint, boxScale);
-}
-function resolveAxisTranslate(value, axis) {
-  if (typeof value === "string") {
-    return parseFloat(value) / 100 * (axis.max - axis.min);
-  }
-  return value;
-}
-function transformBox(box, transform, sourceBox) {
-  const resolveBox = sourceBox ?? box;
-  transformAxis(box.x, resolveAxisTranslate(transform.x, resolveBox.x), transform.scaleX, transform.scale, transform.originX);
-  transformAxis(box.y, resolveAxisTranslate(transform.y, resolveBox.y), transform.scaleY, transform.scale, transform.originY);
-}
-function measureViewportBox(instance, transformPoint2) {
-  return convertBoundingBoxToBox(transformBoxPoints(instance.getBoundingClientRect(), transformPoint2));
-}
-function measurePageBox(element, rootProjectionNode2, transformPagePoint) {
-  const viewportBox = measureViewportBox(element, transformPagePoint);
-  const { scroll } = rootProjectionNode2;
-  if (scroll) {
-    translateAxis(viewportBox.x, scroll.offset.x);
-    translateAxis(viewportBox.y, scroll.offset.y);
-  }
-  return viewportBox;
-}
-const translateAlias = {
-  x: "translateX",
-  y: "translateY",
-  z: "translateZ",
-  transformPerspective: "perspective"
-};
-const numTransforms = transformPropOrder.length;
-function buildTransform(latestValues, transform, transformTemplate) {
-  let transformString = "";
-  let transformIsDefault = true;
-  for (let i2 = 0; i2 < numTransforms; i2++) {
-    const key = transformPropOrder[i2];
-    const value = latestValues[key];
-    if (value === void 0)
-      continue;
-    let valueIsDefault = true;
-    if (typeof value === "number") {
-      valueIsDefault = value === (key.startsWith("scale") ? 1 : 0);
-    } else {
-      const parsed = parseFloat(value);
-      valueIsDefault = key.startsWith("scale") ? parsed === 1 : parsed === 0;
-    }
-    if (!valueIsDefault || transformTemplate) {
-      const valueAsType = getValueAsType(value, numberValueTypes[key]);
-      if (!valueIsDefault) {
-        transformIsDefault = false;
-        const transformName = translateAlias[key] || key;
-        transformString += `${transformName}(${valueAsType}) `;
-      }
-      if (transformTemplate) {
-        transform[key] = valueAsType;
-      }
-    }
-  }
-  transformString = transformString.trim();
-  if (transformTemplate) {
-    transformString = transformTemplate(transform, transformIsDefault ? "" : transformString);
-  } else if (transformIsDefault) {
-    transformString = "none";
-  }
-  return transformString;
-}
-function buildHTMLStyles(state, latestValues, transformTemplate) {
-  const { style: style2, vars, transformOrigin } = state;
-  let hasTransform2 = false;
-  let hasTransformOrigin = false;
-  for (const key in latestValues) {
-    const value = latestValues[key];
-    if (transformProps.has(key)) {
-      hasTransform2 = true;
-      continue;
-    } else if (isCSSVariableName(key)) {
-      vars[key] = value;
-      continue;
-    } else {
-      const valueAsType = getValueAsType(value, numberValueTypes[key]);
-      if (key.startsWith("origin")) {
-        hasTransformOrigin = true;
-        transformOrigin[key] = valueAsType;
-      } else {
-        style2[key] = valueAsType;
-      }
-    }
-  }
-  if (!latestValues.transform) {
-    if (hasTransform2 || transformTemplate) {
-      style2.transform = buildTransform(latestValues, state.transform, transformTemplate);
-    } else if (style2.transform) {
-      style2.transform = "none";
-    }
-  }
-  if (hasTransformOrigin) {
-    const { originX = "50%", originY = "50%", originZ = 0 } = transformOrigin;
-    style2.transformOrigin = `${originX} ${originY} ${originZ}`;
-  }
-}
-function renderHTML(element, { style: style2, vars }, styleProp, projection) {
-  const elementStyle = element.style;
-  let key;
-  for (key in style2) {
-    elementStyle[key] = style2[key];
-  }
-  projection == null ? void 0 : projection.applyProjectionStyles(elementStyle, styleProp);
-  for (key in vars) {
-    elementStyle.setProperty(key, vars[key]);
-  }
-}
-function pixelsToPercent(pixels, axis) {
-  if (axis.max === axis.min)
-    return 0;
-  return pixels / (axis.max - axis.min) * 100;
-}
-const correctBorderRadius = {
-  correct: (latest, node) => {
-    if (!node.target)
-      return latest;
-    if (typeof latest === "string") {
-      if (px.test(latest)) {
-        latest = parseFloat(latest);
-      } else {
-        return latest;
-      }
-    }
-    const x3 = pixelsToPercent(latest, node.target.x);
-    const y2 = pixelsToPercent(latest, node.target.y);
-    return `${x3}% ${y2}%`;
-  }
-};
-const correctBoxShadow = {
-  correct: (latest, { treeScale, projectionDelta }) => {
-    const original = latest;
-    const shadow = complex.parse(latest);
-    if (shadow.length > 5)
-      return original;
-    const template = complex.createTransformer(latest);
-    const offset = typeof shadow[0] !== "number" ? 1 : 0;
-    const xScale = projectionDelta.x.scale * treeScale.x;
-    const yScale = projectionDelta.y.scale * treeScale.y;
-    shadow[0 + offset] /= xScale;
-    shadow[1 + offset] /= yScale;
-    const averageScale = mixNumber$1(xScale, yScale, 0.5);
-    if (typeof shadow[2 + offset] === "number")
-      shadow[2 + offset] /= averageScale;
-    if (typeof shadow[3 + offset] === "number")
-      shadow[3 + offset] /= averageScale;
-    return template(shadow);
-  }
-};
-const scaleCorrectors = {
-  borderRadius: {
-    ...correctBorderRadius,
-    applyTo: [
-      "borderTopLeftRadius",
-      "borderTopRightRadius",
-      "borderBottomLeftRadius",
-      "borderBottomRightRadius"
-    ]
-  },
-  borderTopLeftRadius: correctBorderRadius,
-  borderTopRightRadius: correctBorderRadius,
-  borderBottomLeftRadius: correctBorderRadius,
-  borderBottomRightRadius: correctBorderRadius,
-  boxShadow: correctBoxShadow
-};
-function isForcedMotionValue(key, { layout: layout2, layoutId }) {
-  return transformProps.has(key) || key.startsWith("origin") || (layout2 || layoutId !== void 0) && (!!scaleCorrectors[key] || key === "opacity");
-}
-function scrapeMotionValuesFromProps$1(props, prevProps, visualElement) {
-  var _a3;
-  const style2 = props.style;
-  const prevStyle = prevProps == null ? void 0 : prevProps.style;
-  const newValues = {};
-  if (!style2)
-    return newValues;
-  for (const key in style2) {
-    if (isMotionValue(style2[key]) || prevStyle && isMotionValue(prevStyle[key]) || isForcedMotionValue(key, props) || ((_a3 = visualElement == null ? void 0 : visualElement.getValue(key)) == null ? void 0 : _a3.liveStyle) !== void 0) {
-      newValues[key] = style2[key];
-    }
-  }
-  return newValues;
-}
-function getComputedStyle$1(element) {
-  return window.getComputedStyle(element);
-}
-class HTMLVisualElement extends DOMVisualElement {
-  constructor() {
-    super(...arguments);
-    this.type = "html";
-    this.renderInstance = renderHTML;
-  }
-  readValueFromInstance(instance, key) {
-    var _a3;
-    if (transformProps.has(key)) {
-      return ((_a3 = this.projection) == null ? void 0 : _a3.isProjecting) ? defaultTransformValue(key) : readTransformValue(instance, key);
-    } else {
-      const computedStyle = getComputedStyle$1(instance);
-      const value = (isCSSVariableName(key) ? computedStyle.getPropertyValue(key) : computedStyle[key]) || 0;
-      return typeof value === "string" ? value.trim() : value;
-    }
-  }
-  measureInstanceViewportBox(instance, { transformPagePoint }) {
-    return measureViewportBox(instance, transformPagePoint);
-  }
-  build(renderState, latestValues, props) {
-    buildHTMLStyles(renderState, latestValues, props.transformTemplate);
-  }
-  scrapeMotionValuesFromProps(props, prevProps, visualElement) {
-    return scrapeMotionValuesFromProps$1(props, prevProps, visualElement);
-  }
-}
-const dashKeys = {
-  offset: "stroke-dashoffset",
-  array: "stroke-dasharray"
-};
-const camelKeys = {
-  offset: "strokeDashoffset",
-  array: "strokeDasharray"
-};
-function buildSVGPath(attrs, length, spacing = 1, offset = 0, useDashCase = true) {
-  attrs.pathLength = 1;
-  const keys2 = useDashCase ? dashKeys : camelKeys;
-  attrs[keys2.offset] = `${-offset}`;
-  attrs[keys2.array] = `${length} ${spacing}`;
-}
-const cssMotionPathProperties = [
-  "offsetDistance",
-  "offsetPath",
-  "offsetRotate",
-  "offsetAnchor"
-];
-function buildSVGAttrs(state, {
-  attrX,
-  attrY,
-  attrScale,
-  pathLength,
-  pathSpacing = 1,
-  pathOffset = 0,
-  // This is object creation, which we try to avoid per-frame.
-  ...latest
-}, isSVGTag2, transformTemplate, styleProp) {
-  buildHTMLStyles(state, latest, transformTemplate);
-  if (isSVGTag2) {
-    if (state.style.viewBox) {
-      state.attrs.viewBox = state.style.viewBox;
-    }
-    return;
-  }
-  state.attrs = state.style;
-  state.style = {};
-  const { attrs, style: style2 } = state;
-  if (attrs.transform) {
-    style2.transform = attrs.transform;
-    delete attrs.transform;
-  }
-  if (style2.transform || attrs.transformOrigin) {
-    style2.transformOrigin = attrs.transformOrigin ?? "50% 50%";
-    delete attrs.transformOrigin;
-  }
-  if (style2.transform) {
-    style2.transformBox = (styleProp == null ? void 0 : styleProp.transformBox) ?? "fill-box";
-    delete attrs.transformBox;
-  }
-  for (const key of cssMotionPathProperties) {
-    if (attrs[key] !== void 0) {
-      style2[key] = attrs[key];
-      delete attrs[key];
-    }
-  }
-  if (attrX !== void 0)
-    attrs.x = attrX;
-  if (attrY !== void 0)
-    attrs.y = attrY;
-  if (attrScale !== void 0)
-    attrs.scale = attrScale;
-  if (pathLength !== void 0) {
-    buildSVGPath(attrs, pathLength, pathSpacing, pathOffset, false);
-  }
-}
-const camelCaseAttributes = /* @__PURE__ */ new Set([
-  "baseFrequency",
-  "diffuseConstant",
-  "kernelMatrix",
-  "kernelUnitLength",
-  "keySplines",
-  "keyTimes",
-  "limitingConeAngle",
-  "markerHeight",
-  "markerWidth",
-  "numOctaves",
-  "targetX",
-  "targetY",
-  "surfaceScale",
-  "specularConstant",
-  "specularExponent",
-  "stdDeviation",
-  "tableValues",
-  "viewBox",
-  "gradientTransform",
-  "pathLength",
-  "startOffset",
-  "textLength",
-  "lengthAdjust"
-]);
-const isSVGTag = (tag) => typeof tag === "string" && tag.toLowerCase() === "svg";
-function renderSVG(element, renderState, _styleProp, projection) {
-  renderHTML(element, renderState, void 0, projection);
-  for (const key in renderState.attrs) {
-    element.setAttribute(!camelCaseAttributes.has(key) ? camelToDash(key) : key, renderState.attrs[key]);
-  }
-}
-function scrapeMotionValuesFromProps(props, prevProps, visualElement) {
-  const newValues = scrapeMotionValuesFromProps$1(props, prevProps, visualElement);
-  for (const key in props) {
-    if (isMotionValue(props[key]) || isMotionValue(prevProps[key])) {
-      const targetKey = transformPropOrder.indexOf(key) !== -1 ? "attr" + key.charAt(0).toUpperCase() + key.substring(1) : key;
-      newValues[targetKey] = props[key];
-    }
-  }
-  return newValues;
-}
-class SVGVisualElement extends DOMVisualElement {
-  constructor() {
-    super(...arguments);
-    this.type = "svg";
-    this.isSVGTag = false;
-    this.measureInstanceViewportBox = createBox;
-  }
-  getBaseTargetFromProps(props, key) {
-    return props[key];
-  }
-  readValueFromInstance(instance, key) {
-    if (transformProps.has(key)) {
-      const defaultType = getDefaultValueType(key);
-      return defaultType ? defaultType.default || 0 : 0;
-    }
-    key = !camelCaseAttributes.has(key) ? camelToDash(key) : key;
-    return instance.getAttribute(key);
-  }
-  scrapeMotionValuesFromProps(props, prevProps, visualElement) {
-    return scrapeMotionValuesFromProps(props, prevProps, visualElement);
-  }
-  build(renderState, latestValues, props) {
-    buildSVGAttrs(renderState, latestValues, this.isSVGTag, props.transformTemplate, props.style);
-  }
-  renderInstance(instance, renderState, styleProp, projection) {
-    renderSVG(instance, renderState, styleProp, projection);
-  }
-  mount(instance) {
-    this.isSVGTag = isSVGTag(instance.tagName);
-    super.mount(instance);
-  }
-}
-const numVariantProps = variantProps.length;
-function getVariantContext(visualElement) {
-  if (!visualElement)
-    return void 0;
-  if (!visualElement.isControllingVariants) {
-    const context2 = visualElement.parent ? getVariantContext(visualElement.parent) || {} : {};
-    if (visualElement.props.initial !== void 0) {
-      context2.initial = visualElement.props.initial;
-    }
-    return context2;
-  }
-  const context = {};
-  for (let i2 = 0; i2 < numVariantProps; i2++) {
-    const name = variantProps[i2];
-    const prop = visualElement.props[name];
-    if (isVariantLabel(prop) || prop === false) {
-      context[name] = prop;
-    }
-  }
-  return context;
-}
-function shallowCompare(next, prev) {
-  if (!Array.isArray(prev))
-    return false;
-  const prevLength = prev.length;
-  if (prevLength !== next.length)
-    return false;
-  for (let i2 = 0; i2 < prevLength; i2++) {
-    if (prev[i2] !== next[i2])
-      return false;
-  }
-  return true;
-}
-const reversePriorityOrder = [...variantPriorityOrder].reverse();
-const numAnimationTypes = variantPriorityOrder.length;
-function createAnimateFunction(visualElement) {
-  return (animations2) => {
-    return Promise.all(animations2.map(({ animation, options }) => animateVisualElement(visualElement, animation, options)));
-  };
-}
-function createAnimationState(visualElement) {
-  let animate = createAnimateFunction(visualElement);
-  let state = createState();
-  let isInitialRender = true;
-  let wasReset = false;
-  const buildResolvedTypeValues = (type) => (acc, definition) => {
-    var _a3;
-    const resolved = resolveVariant(visualElement, definition, type === "exit" ? (_a3 = visualElement.presenceContext) == null ? void 0 : _a3.custom : void 0);
-    if (resolved) {
-      const { transition, transitionEnd, ...target } = resolved;
-      acc = { ...acc, ...target, ...transitionEnd };
-    }
-    return acc;
-  };
-  function setAnimateFunction(makeAnimator) {
-    animate = makeAnimator(visualElement);
-  }
-  function animateChanges(changedActiveType) {
-    const { props } = visualElement;
-    const context = getVariantContext(visualElement.parent) || {};
-    const animations2 = [];
-    const removedKeys = /* @__PURE__ */ new Set();
-    let encounteredKeys = {};
-    let removedVariantIndex = Infinity;
-    for (let i2 = 0; i2 < numAnimationTypes; i2++) {
-      const type = reversePriorityOrder[i2];
-      const typeState = state[type];
-      const prop = props[type] !== void 0 ? props[type] : context[type];
-      const propIsVariant = isVariantLabel(prop);
-      const activeDelta = type === changedActiveType ? typeState.isActive : null;
-      if (activeDelta === false)
-        removedVariantIndex = i2;
-      let isInherited = prop === context[type] && prop !== props[type] && propIsVariant;
-      if (isInherited && (isInitialRender || wasReset) && visualElement.manuallyAnimateOnMount) {
-        isInherited = false;
-      }
-      typeState.protectedKeys = { ...encounteredKeys };
-      if (
-        // If it isn't active and hasn't *just* been set as inactive
-        !typeState.isActive && activeDelta === null || // If we didn't and don't have any defined prop for this animation type
-        !prop && !typeState.prevProp || // Or if the prop doesn't define an animation
-        isAnimationControls(prop) || typeof prop === "boolean"
-      ) {
-        continue;
-      }
-      if (type === "exit" && typeState.isActive && activeDelta !== true) {
-        if (typeState.prevResolvedValues) {
-          encounteredKeys = {
-            ...encounteredKeys,
-            ...typeState.prevResolvedValues
-          };
-        }
-        continue;
-      }
-      const variantDidChange = checkVariantsDidChange(typeState.prevProp, prop);
-      let shouldAnimateType = variantDidChange || // If we're making this variant active, we want to always make it active
-      type === changedActiveType && typeState.isActive && !isInherited && propIsVariant || // If we removed a higher-priority variant (i is in reverse order)
-      i2 > removedVariantIndex && propIsVariant;
-      let handledRemovedValues = false;
-      const definitionList = Array.isArray(prop) ? prop : [prop];
-      let resolvedValues = definitionList.reduce(buildResolvedTypeValues(type), {});
-      if (activeDelta === false)
-        resolvedValues = {};
-      const { prevResolvedValues = {} } = typeState;
-      const allKeys = {
-        ...prevResolvedValues,
-        ...resolvedValues
-      };
-      const markToAnimate = (key) => {
-        shouldAnimateType = true;
-        if (removedKeys.has(key)) {
-          handledRemovedValues = true;
-          removedKeys.delete(key);
-        }
-        typeState.needsAnimating[key] = true;
-        const motionValue2 = visualElement.getValue(key);
-        if (motionValue2)
-          motionValue2.liveStyle = false;
-      };
-      for (const key in allKeys) {
-        const next = resolvedValues[key];
-        const prev = prevResolvedValues[key];
-        if (encounteredKeys.hasOwnProperty(key))
-          continue;
-        let valueHasChanged = false;
-        if (isKeyframesTarget(next) && isKeyframesTarget(prev)) {
-          valueHasChanged = !shallowCompare(next, prev);
-        } else {
-          valueHasChanged = next !== prev;
-        }
-        if (valueHasChanged) {
-          if (next !== void 0 && next !== null) {
-            markToAnimate(key);
-          } else {
-            removedKeys.add(key);
-          }
-        } else if (next !== void 0 && removedKeys.has(key)) {
-          markToAnimate(key);
-        } else {
-          typeState.protectedKeys[key] = true;
-        }
-      }
-      typeState.prevProp = prop;
-      typeState.prevResolvedValues = resolvedValues;
-      if (typeState.isActive) {
-        encounteredKeys = { ...encounteredKeys, ...resolvedValues };
-      }
-      if ((isInitialRender || wasReset) && visualElement.blockInitialAnimation) {
-        shouldAnimateType = false;
-      }
-      const willAnimateViaParent = isInherited && variantDidChange;
-      const needsAnimating = !willAnimateViaParent || handledRemovedValues;
-      if (shouldAnimateType && needsAnimating) {
-        animations2.push(...definitionList.map((animation) => {
-          const options = { type };
-          if (typeof animation === "string" && (isInitialRender || wasReset) && !willAnimateViaParent && visualElement.manuallyAnimateOnMount && visualElement.parent) {
-            const { parent } = visualElement;
-            const parentVariant = resolveVariant(parent, animation);
-            if (parent.enteringChildren && parentVariant) {
-              const { delayChildren } = parentVariant.transition || {};
-              options.delay = calcChildStagger(parent.enteringChildren, visualElement, delayChildren);
-            }
-          }
-          return {
-            animation,
-            options
-          };
-        }));
-      }
-    }
-    if (removedKeys.size) {
-      const fallbackAnimation = {};
-      if (typeof props.initial !== "boolean") {
-        const initialTransition = resolveVariant(visualElement, Array.isArray(props.initial) ? props.initial[0] : props.initial);
-        if (initialTransition && initialTransition.transition) {
-          fallbackAnimation.transition = initialTransition.transition;
-        }
-      }
-      removedKeys.forEach((key) => {
-        const fallbackTarget = visualElement.getBaseTarget(key);
-        const motionValue2 = visualElement.getValue(key);
-        if (motionValue2)
-          motionValue2.liveStyle = true;
-        fallbackAnimation[key] = fallbackTarget ?? null;
-      });
-      animations2.push({ animation: fallbackAnimation });
-    }
-    let shouldAnimate = Boolean(animations2.length);
-    if (isInitialRender && (props.initial === false || props.initial === props.animate) && !visualElement.manuallyAnimateOnMount) {
-      shouldAnimate = false;
-    }
-    isInitialRender = false;
-    wasReset = false;
-    return shouldAnimate ? animate(animations2) : Promise.resolve();
-  }
-  function setActive(type, isActive) {
-    var _a3;
-    if (state[type].isActive === isActive)
-      return Promise.resolve();
-    (_a3 = visualElement.variantChildren) == null ? void 0 : _a3.forEach((child) => {
-      var _a4;
-      return (_a4 = child.animationState) == null ? void 0 : _a4.setActive(type, isActive);
-    });
-    state[type].isActive = isActive;
-    const animations2 = animateChanges(type);
-    for (const key in state) {
-      state[key].protectedKeys = {};
-    }
-    return animations2;
-  }
-  return {
-    animateChanges,
-    setActive,
-    setAnimateFunction,
-    getState: () => state,
-    reset: () => {
-      state = createState();
-      wasReset = true;
-    }
-  };
-}
-function checkVariantsDidChange(prev, next) {
-  if (typeof next === "string") {
-    return next !== prev;
-  } else if (Array.isArray(next)) {
-    return !shallowCompare(next, prev);
-  }
-  return false;
-}
-function createTypeState(isActive = false) {
-  return {
-    isActive,
-    protectedKeys: {},
-    needsAnimating: {},
-    prevResolvedValues: {}
-  };
-}
-function createState() {
-  return {
-    animate: createTypeState(true),
-    whileInView: createTypeState(),
-    whileHover: createTypeState(),
-    whileTap: createTypeState(),
-    whileDrag: createTypeState(),
-    whileFocus: createTypeState(),
-    exit: createTypeState()
-  };
-}
-function copyAxisInto(axis, originAxis) {
-  axis.min = originAxis.min;
-  axis.max = originAxis.max;
-}
-function copyBoxInto(box, originBox) {
-  copyAxisInto(box.x, originBox.x);
-  copyAxisInto(box.y, originBox.y);
-}
-function copyAxisDeltaInto(delta, originDelta) {
-  delta.translate = originDelta.translate;
-  delta.scale = originDelta.scale;
-  delta.originPoint = originDelta.originPoint;
-  delta.origin = originDelta.origin;
-}
-const SCALE_PRECISION = 1e-4;
-const SCALE_MIN = 1 - SCALE_PRECISION;
-const SCALE_MAX = 1 + SCALE_PRECISION;
-const TRANSLATE_PRECISION = 0.01;
-const TRANSLATE_MIN = 0 - TRANSLATE_PRECISION;
-const TRANSLATE_MAX = 0 + TRANSLATE_PRECISION;
-function calcLength(axis) {
-  return axis.max - axis.min;
-}
-function isNear(value, target, maxDistance) {
-  return Math.abs(value - target) <= maxDistance;
-}
-function calcAxisDelta(delta, source, target, origin = 0.5) {
-  delta.origin = origin;
-  delta.originPoint = mixNumber$1(source.min, source.max, delta.origin);
-  delta.scale = calcLength(target) / calcLength(source);
-  delta.translate = mixNumber$1(target.min, target.max, delta.origin) - delta.originPoint;
-  if (delta.scale >= SCALE_MIN && delta.scale <= SCALE_MAX || isNaN(delta.scale)) {
-    delta.scale = 1;
-  }
-  if (delta.translate >= TRANSLATE_MIN && delta.translate <= TRANSLATE_MAX || isNaN(delta.translate)) {
-    delta.translate = 0;
-  }
-}
-function calcBoxDelta(delta, source, target, origin) {
-  calcAxisDelta(delta.x, source.x, target.x, origin ? origin.originX : void 0);
-  calcAxisDelta(delta.y, source.y, target.y, origin ? origin.originY : void 0);
-}
-function calcRelativeAxis(target, relative, parent, anchor = 0) {
-  const anchorPoint = anchor ? mixNumber$1(parent.min, parent.max, anchor) : parent.min;
-  target.min = anchorPoint + relative.min;
-  target.max = target.min + calcLength(relative);
-}
-function calcRelativeBox(target, relative, parent, anchor) {
-  calcRelativeAxis(target.x, relative.x, parent.x, anchor == null ? void 0 : anchor.x);
-  calcRelativeAxis(target.y, relative.y, parent.y, anchor == null ? void 0 : anchor.y);
-}
-function calcRelativeAxisPosition(target, layout2, parent, anchor = 0) {
-  const anchorPoint = anchor ? mixNumber$1(parent.min, parent.max, anchor) : parent.min;
-  target.min = layout2.min - anchorPoint;
-  target.max = target.min + calcLength(layout2);
-}
-function calcRelativePosition(target, layout2, parent, anchor) {
-  calcRelativeAxisPosition(target.x, layout2.x, parent.x, anchor == null ? void 0 : anchor.x);
-  calcRelativeAxisPosition(target.y, layout2.y, parent.y, anchor == null ? void 0 : anchor.y);
-}
-function removePointDelta(point2, translate, scale2, originPoint, boxScale) {
-  point2 -= translate;
-  point2 = scalePoint(point2, 1 / scale2, originPoint);
-  if (boxScale !== void 0) {
-    point2 = scalePoint(point2, 1 / boxScale, originPoint);
-  }
-  return point2;
-}
-function removeAxisDelta(axis, translate = 0, scale2 = 1, origin = 0.5, boxScale, originAxis = axis, sourceAxis = axis) {
-  if (percent.test(translate)) {
-    translate = parseFloat(translate);
-    const relativeProgress = mixNumber$1(sourceAxis.min, sourceAxis.max, translate / 100);
-    translate = relativeProgress - sourceAxis.min;
-  }
-  if (typeof translate !== "number")
-    return;
-  let originPoint = mixNumber$1(originAxis.min, originAxis.max, origin);
-  if (axis === originAxis)
-    originPoint -= translate;
-  axis.min = removePointDelta(axis.min, translate, scale2, originPoint, boxScale);
-  axis.max = removePointDelta(axis.max, translate, scale2, originPoint, boxScale);
-}
-function removeAxisTransforms(axis, transforms, [key, scaleKey, originKey], origin, sourceAxis) {
-  removeAxisDelta(axis, transforms[key], transforms[scaleKey], transforms[originKey], transforms.scale, origin, sourceAxis);
-}
-const xKeys = ["x", "scaleX", "originX"];
-const yKeys = ["y", "scaleY", "originY"];
-function removeBoxTransforms(box, transforms, originBox, sourceBox) {
-  removeAxisTransforms(box.x, transforms, xKeys, originBox ? originBox.x : void 0, sourceBox ? sourceBox.x : void 0);
-  removeAxisTransforms(box.y, transforms, yKeys, originBox ? originBox.y : void 0, sourceBox ? sourceBox.y : void 0);
-}
-function isAxisDeltaZero(delta) {
-  return delta.translate === 0 && delta.scale === 1;
-}
-function isDeltaZero(delta) {
-  return isAxisDeltaZero(delta.x) && isAxisDeltaZero(delta.y);
-}
-function axisEquals(a2, b2) {
-  return a2.min === b2.min && a2.max === b2.max;
-}
-function boxEquals(a2, b2) {
-  return axisEquals(a2.x, b2.x) && axisEquals(a2.y, b2.y);
-}
-function axisEqualsRounded(a2, b2) {
-  return Math.round(a2.min) === Math.round(b2.min) && Math.round(a2.max) === Math.round(b2.max);
-}
-function boxEqualsRounded(a2, b2) {
-  return axisEqualsRounded(a2.x, b2.x) && axisEqualsRounded(a2.y, b2.y);
-}
-function aspectRatio(box) {
-  return calcLength(box.x) / calcLength(box.y);
-}
-function axisDeltaEquals(a2, b2) {
-  return a2.translate === b2.translate && a2.scale === b2.scale && a2.originPoint === b2.originPoint;
-}
-function eachAxis(callback) {
-  return [callback("x"), callback("y")];
-}
-function buildProjectionTransform(delta, treeScale, latestTransform) {
-  let transform = "";
-  const xTranslate = delta.x.translate / treeScale.x;
-  const yTranslate = delta.y.translate / treeScale.y;
-  const zTranslate = (latestTransform == null ? void 0 : latestTransform.z) || 0;
-  if (xTranslate || yTranslate || zTranslate) {
-    transform = `translate3d(${xTranslate}px, ${yTranslate}px, ${zTranslate}px) `;
-  }
-  if (treeScale.x !== 1 || treeScale.y !== 1) {
-    transform += `scale(${1 / treeScale.x}, ${1 / treeScale.y}) `;
-  }
-  if (latestTransform) {
-    const { transformPerspective, rotate: rotate2, rotateX, rotateY, skewX, skewY } = latestTransform;
-    if (transformPerspective)
-      transform = `perspective(${transformPerspective}px) ${transform}`;
-    if (rotate2)
-      transform += `rotate(${rotate2}deg) `;
-    if (rotateX)
-      transform += `rotateX(${rotateX}deg) `;
-    if (rotateY)
-      transform += `rotateY(${rotateY}deg) `;
-    if (skewX)
-      transform += `skewX(${skewX}deg) `;
-    if (skewY)
-      transform += `skewY(${skewY}deg) `;
-  }
-  const elementScaleX = delta.x.scale * treeScale.x;
-  const elementScaleY = delta.y.scale * treeScale.y;
-  if (elementScaleX !== 1 || elementScaleY !== 1) {
-    transform += `scale(${elementScaleX}, ${elementScaleY})`;
-  }
-  return transform || "none";
-}
-const borderLabels = [
-  "borderTopLeftRadius",
-  "borderTopRightRadius",
-  "borderBottomLeftRadius",
-  "borderBottomRightRadius"
-];
-const numBorders = borderLabels.length;
-const asNumber = (value) => typeof value === "string" ? parseFloat(value) : value;
-const isPx = (value) => typeof value === "number" || px.test(value);
-function mixValues(target, follow, lead, progress2, shouldCrossfadeOpacity, isOnlyMember) {
-  if (shouldCrossfadeOpacity) {
-    target.opacity = mixNumber$1(0, lead.opacity ?? 1, easeCrossfadeIn(progress2));
-    target.opacityExit = mixNumber$1(follow.opacity ?? 1, 0, easeCrossfadeOut(progress2));
-  } else if (isOnlyMember) {
-    target.opacity = mixNumber$1(follow.opacity ?? 1, lead.opacity ?? 1, progress2);
-  }
-  for (let i2 = 0; i2 < numBorders; i2++) {
-    const borderLabel = borderLabels[i2];
-    let followRadius = getRadius(follow, borderLabel);
-    let leadRadius = getRadius(lead, borderLabel);
-    if (followRadius === void 0 && leadRadius === void 0)
-      continue;
-    followRadius || (followRadius = 0);
-    leadRadius || (leadRadius = 0);
-    const canMix = followRadius === 0 || leadRadius === 0 || isPx(followRadius) === isPx(leadRadius);
-    if (canMix) {
-      target[borderLabel] = Math.max(mixNumber$1(asNumber(followRadius), asNumber(leadRadius), progress2), 0);
-      if (percent.test(leadRadius) || percent.test(followRadius)) {
-        target[borderLabel] += "%";
-      }
-    } else {
-      target[borderLabel] = leadRadius;
-    }
-  }
-  if (follow.rotate || lead.rotate) {
-    target.rotate = mixNumber$1(follow.rotate || 0, lead.rotate || 0, progress2);
-  }
-}
-function getRadius(values, radiusName) {
-  return values[radiusName] !== void 0 ? values[radiusName] : values.borderRadius;
-}
-const easeCrossfadeIn = /* @__PURE__ */ compress(0, 0.5, circOut);
-const easeCrossfadeOut = /* @__PURE__ */ compress(0.5, 0.95, noop);
-function compress(min2, max2, easing) {
-  return (p2) => {
-    if (p2 < min2)
-      return 0;
-    if (p2 > max2)
-      return 1;
-    return easing(/* @__PURE__ */ progress(min2, max2, p2));
-  };
-}
-function animateSingleValue(value, keyframes2, options) {
-  const motionValue$1 = isMotionValue(value) ? value : motionValue(value);
-  motionValue$1.start(animateMotionValue("", motionValue$1, keyframes2, options));
-  return motionValue$1.animation;
-}
-function addDomEvent(target, eventName, handler, options = { passive: true }) {
-  target.addEventListener(eventName, handler, options);
-  return () => target.removeEventListener(eventName, handler);
-}
-const compareByDepth = (a2, b2) => a2.depth - b2.depth;
-class FlatTree {
-  constructor() {
-    this.children = [];
-    this.isDirty = false;
-  }
-  add(child) {
-    addUniqueItem(this.children, child);
-    this.isDirty = true;
-  }
-  remove(child) {
-    removeItem(this.children, child);
-    this.isDirty = true;
-  }
-  forEach(callback) {
-    this.isDirty && this.children.sort(compareByDepth);
-    this.isDirty = false;
-    this.children.forEach(callback);
-  }
-}
-function delay(callback, timeout2) {
-  const start = time.now();
-  const checkElapsed = ({ timestamp }) => {
-    const elapsed = timestamp - start;
-    if (elapsed >= timeout2) {
-      cancelFrame(checkElapsed);
-      callback(elapsed - timeout2);
-    }
-  };
-  frame.setup(checkElapsed, true);
-  return () => cancelFrame(checkElapsed);
-}
-function resolveMotionValue(value) {
-  return isMotionValue(value) ? value.get() : value;
-}
-class NodeStack {
-  constructor() {
-    this.members = [];
-  }
-  add(node) {
-    addUniqueItem(this.members, node);
-    for (let i2 = this.members.length - 1; i2 >= 0; i2--) {
-      const member = this.members[i2];
-      if (member === node || member === this.lead || member === this.prevLead)
-        continue;
-      const inst = member.instance;
-      if ((!inst || inst.isConnected === false) && !member.snapshot) {
-        removeItem(this.members, member);
-        member.unmount();
-      }
-    }
-    node.scheduleRender();
-  }
-  remove(node) {
-    removeItem(this.members, node);
-    if (node === this.prevLead)
-      this.prevLead = void 0;
-    if (node === this.lead) {
-      const prevLead = this.members[this.members.length - 1];
-      if (prevLead)
-        this.promote(prevLead);
-    }
-  }
-  relegate(node) {
-    var _a3;
-    for (let i2 = this.members.indexOf(node) - 1; i2 >= 0; i2--) {
-      const member = this.members[i2];
-      if (member.isPresent !== false && ((_a3 = member.instance) == null ? void 0 : _a3.isConnected) !== false) {
-        this.promote(member);
-        return true;
-      }
-    }
-    return false;
-  }
-  promote(node, preserveFollowOpacity) {
-    var _a3;
-    const prevLead = this.lead;
-    if (node === prevLead)
-      return;
-    this.prevLead = prevLead;
-    this.lead = node;
-    node.show();
-    if (prevLead) {
-      prevLead.updateSnapshot();
-      node.scheduleRender();
-      const { layoutDependency: prevDep } = prevLead.options;
-      const { layoutDependency: nextDep } = node.options;
-      if (prevDep === void 0 || prevDep !== nextDep) {
-        node.resumeFrom = prevLead;
-        if (preserveFollowOpacity)
-          prevLead.preserveOpacity = true;
-        if (prevLead.snapshot) {
-          node.snapshot = prevLead.snapshot;
-          node.snapshot.latestValues = prevLead.animationValues || prevLead.latestValues;
-        }
-        if ((_a3 = node.root) == null ? void 0 : _a3.isUpdating)
-          node.isLayoutDirty = true;
-      }
-      if (node.options.crossfade === false)
-        prevLead.hide();
-    }
-  }
-  exitAnimationComplete() {
-    this.members.forEach((member) => {
-      var _a3, _b3, _c2, _d2, _e3;
-      (_b3 = (_a3 = member.options).onExitComplete) == null ? void 0 : _b3.call(_a3);
-      (_e3 = (_c2 = member.resumingFrom) == null ? void 0 : (_d2 = _c2.options).onExitComplete) == null ? void 0 : _e3.call(_d2);
-    });
-  }
-  scheduleRender() {
-    this.members.forEach((member) => member.instance && member.scheduleRender(false));
-  }
-  removeLeadSnapshot() {
-    var _a3;
-    if ((_a3 = this.lead) == null ? void 0 : _a3.snapshot)
-      this.lead.snapshot = void 0;
-  }
-}
-const globalProjectionState = {
-  /**
-   * Global flag as to whether the tree has animated since the last time
-   * we resized the window
-   */
-  hasAnimatedSinceResize: true,
-  /**
-   * We set this to true once, on the first update. Any nodes added to the tree beyond that
-   * update will be given a `data-projection-id` attribute.
-   */
-  hasEverUpdated: false
-};
-const transformAxes = ["", "X", "Y", "Z"];
-const animationTarget = 1e3;
-let id$1 = 0;
-function resetDistortingTransform(key, visualElement, values, sharedAnimationValues) {
-  const { latestValues } = visualElement;
-  if (latestValues[key]) {
-    values[key] = latestValues[key];
-    visualElement.setStaticValue(key, 0);
-    if (sharedAnimationValues) {
-      sharedAnimationValues[key] = 0;
-    }
-  }
-}
-function cancelTreeOptimisedTransformAnimations(projectionNode) {
-  projectionNode.hasCheckedOptimisedAppear = true;
-  if (projectionNode.root === projectionNode)
-    return;
-  const { visualElement } = projectionNode.options;
-  if (!visualElement)
-    return;
-  const appearId = getOptimisedAppearId(visualElement);
-  if (window.MotionHasOptimisedAnimation(appearId, "transform")) {
-    const { layout: layout2, layoutId } = projectionNode.options;
-    window.MotionCancelOptimisedAnimation(appearId, "transform", frame, !(layout2 || layoutId));
-  }
-  const { parent } = projectionNode;
-  if (parent && !parent.hasCheckedOptimisedAppear) {
-    cancelTreeOptimisedTransformAnimations(parent);
-  }
-}
-function createProjectionNode$1({ attachResizeListener, defaultParent, measureScroll, checkIsScrollRoot, resetTransform }) {
-  return class ProjectionNode {
-    constructor(latestValues = {}, parent = defaultParent == null ? void 0 : defaultParent()) {
-      this.id = id$1++;
-      this.animationId = 0;
-      this.animationCommitId = 0;
-      this.children = /* @__PURE__ */ new Set();
-      this.options = {};
-      this.isTreeAnimating = false;
-      this.isAnimationBlocked = false;
-      this.isLayoutDirty = false;
-      this.isProjectionDirty = false;
-      this.isSharedProjectionDirty = false;
-      this.isTransformDirty = false;
-      this.updateManuallyBlocked = false;
-      this.updateBlockedByResize = false;
-      this.isUpdating = false;
-      this.isSVG = false;
-      this.needsReset = false;
-      this.shouldResetTransform = false;
-      this.hasCheckedOptimisedAppear = false;
-      this.treeScale = { x: 1, y: 1 };
-      this.eventHandlers = /* @__PURE__ */ new Map();
-      this.hasTreeAnimated = false;
-      this.layoutVersion = 0;
-      this.updateScheduled = false;
-      this.scheduleUpdate = () => this.update();
-      this.projectionUpdateScheduled = false;
-      this.checkUpdateFailed = () => {
-        if (this.isUpdating) {
-          this.isUpdating = false;
-          this.clearAllSnapshots();
-        }
-      };
-      this.updateProjection = () => {
-        this.projectionUpdateScheduled = false;
-        this.nodes.forEach(propagateDirtyNodes);
-        this.nodes.forEach(resolveTargetDelta);
-        this.nodes.forEach(calcProjection);
-        this.nodes.forEach(cleanDirtyNodes);
-      };
-      this.resolvedRelativeTargetAt = 0;
-      this.linkedParentVersion = 0;
-      this.hasProjected = false;
-      this.isVisible = true;
-      this.animationProgress = 0;
-      this.sharedNodes = /* @__PURE__ */ new Map();
-      this.latestValues = latestValues;
-      this.root = parent ? parent.root || parent : this;
-      this.path = parent ? [...parent.path, parent] : [];
-      this.parent = parent;
-      this.depth = parent ? parent.depth + 1 : 0;
-      for (let i2 = 0; i2 < this.path.length; i2++) {
-        this.path[i2].shouldResetTransform = true;
-      }
-      if (this.root === this)
-        this.nodes = new FlatTree();
-    }
-    addEventListener(name, handler) {
-      if (!this.eventHandlers.has(name)) {
-        this.eventHandlers.set(name, new SubscriptionManager());
-      }
-      return this.eventHandlers.get(name).add(handler);
-    }
-    notifyListeners(name, ...args) {
-      const subscriptionManager = this.eventHandlers.get(name);
-      subscriptionManager && subscriptionManager.notify(...args);
-    }
-    hasListeners(name) {
-      return this.eventHandlers.has(name);
-    }
-    /**
-     * Lifecycles
-     */
-    mount(instance) {
-      if (this.instance)
-        return;
-      this.isSVG = isSVGElement(instance) && !isSVGSVGElement(instance);
-      this.instance = instance;
-      const { layoutId, layout: layout2, visualElement } = this.options;
-      if (visualElement && !visualElement.current) {
-        visualElement.mount(instance);
-      }
-      this.root.nodes.add(this);
-      this.parent && this.parent.children.add(this);
-      if (this.root.hasTreeAnimated && (layout2 || layoutId)) {
-        this.isLayoutDirty = true;
-      }
-      if (attachResizeListener) {
-        let cancelDelay;
-        let innerWidth = 0;
-        const resizeUnblockUpdate = () => this.root.updateBlockedByResize = false;
-        frame.read(() => {
-          innerWidth = window.innerWidth;
-        });
-        attachResizeListener(instance, () => {
-          const newInnerWidth = window.innerWidth;
-          if (newInnerWidth === innerWidth)
-            return;
-          innerWidth = newInnerWidth;
-          this.root.updateBlockedByResize = true;
-          cancelDelay && cancelDelay();
-          cancelDelay = delay(resizeUnblockUpdate, 250);
-          if (globalProjectionState.hasAnimatedSinceResize) {
-            globalProjectionState.hasAnimatedSinceResize = false;
-            this.nodes.forEach(finishAnimation);
-          }
-        });
-      }
-      if (layoutId) {
-        this.root.registerSharedNode(layoutId, this);
-      }
-      if (this.options.animate !== false && visualElement && (layoutId || layout2)) {
-        this.addEventListener("didUpdate", ({ delta, hasLayoutChanged, hasRelativeLayoutChanged, layout: newLayout }) => {
-          if (this.isTreeAnimationBlocked()) {
-            this.target = void 0;
-            this.relativeTarget = void 0;
-            return;
-          }
-          const layoutTransition = this.options.transition || visualElement.getDefaultTransition() || defaultLayoutTransition;
-          const { onLayoutAnimationStart, onLayoutAnimationComplete } = visualElement.getProps();
-          const hasTargetChanged = !this.targetLayout || !boxEqualsRounded(this.targetLayout, newLayout);
-          const hasOnlyRelativeTargetChanged = !hasLayoutChanged && hasRelativeLayoutChanged;
-          if (this.options.layoutRoot || this.resumeFrom || hasOnlyRelativeTargetChanged || hasLayoutChanged && (hasTargetChanged || !this.currentAnimation)) {
-            if (this.resumeFrom) {
-              this.resumingFrom = this.resumeFrom;
-              this.resumingFrom.resumingFrom = void 0;
-            }
-            const animationOptions = {
-              ...getValueTransition(layoutTransition, "layout"),
-              onPlay: onLayoutAnimationStart,
-              onComplete: onLayoutAnimationComplete
-            };
-            if (visualElement.shouldReduceMotion || this.options.layoutRoot) {
-              animationOptions.delay = 0;
-              animationOptions.type = false;
-            }
-            this.startAnimation(animationOptions);
-            this.setAnimationOrigin(delta, hasOnlyRelativeTargetChanged);
-          } else {
-            if (!hasLayoutChanged) {
-              finishAnimation(this);
-            }
-            if (this.isLead() && this.options.onExitComplete) {
-              this.options.onExitComplete();
-            }
-          }
-          this.targetLayout = newLayout;
-        });
-      }
-    }
-    unmount() {
-      this.options.layoutId && this.willUpdate();
-      this.root.nodes.remove(this);
-      const stack = this.getStack();
-      stack && stack.remove(this);
-      this.parent && this.parent.children.delete(this);
-      this.instance = void 0;
-      this.eventHandlers.clear();
-      cancelFrame(this.updateProjection);
-    }
-    // only on the root
-    blockUpdate() {
-      this.updateManuallyBlocked = true;
-    }
-    unblockUpdate() {
-      this.updateManuallyBlocked = false;
-    }
-    isUpdateBlocked() {
-      return this.updateManuallyBlocked || this.updateBlockedByResize;
-    }
-    isTreeAnimationBlocked() {
-      return this.isAnimationBlocked || this.parent && this.parent.isTreeAnimationBlocked() || false;
-    }
-    // Note: currently only running on root node
-    startUpdate() {
-      if (this.isUpdateBlocked())
-        return;
-      this.isUpdating = true;
-      this.nodes && this.nodes.forEach(resetSkewAndRotation);
-      this.animationId++;
-    }
-    getTransformTemplate() {
-      const { visualElement } = this.options;
-      return visualElement && visualElement.getProps().transformTemplate;
-    }
-    willUpdate(shouldNotifyListeners = true) {
-      this.root.hasTreeAnimated = true;
-      if (this.root.isUpdateBlocked()) {
-        this.options.onExitComplete && this.options.onExitComplete();
-        return;
-      }
-      if (window.MotionCancelOptimisedAnimation && !this.hasCheckedOptimisedAppear) {
-        cancelTreeOptimisedTransformAnimations(this);
-      }
-      !this.root.isUpdating && this.root.startUpdate();
-      if (this.isLayoutDirty)
-        return;
-      this.isLayoutDirty = true;
-      for (let i2 = 0; i2 < this.path.length; i2++) {
-        const node = this.path[i2];
-        node.shouldResetTransform = true;
-        if (typeof node.latestValues.x === "string" || typeof node.latestValues.y === "string") {
-          node.isLayoutDirty = true;
-        }
-        node.updateScroll("snapshot");
-        if (node.options.layoutRoot) {
-          node.willUpdate(false);
-        }
-      }
-      const { layoutId, layout: layout2 } = this.options;
-      if (layoutId === void 0 && !layout2)
-        return;
-      const transformTemplate = this.getTransformTemplate();
-      this.prevTransformTemplateValue = transformTemplate ? transformTemplate(this.latestValues, "") : void 0;
-      this.updateSnapshot();
-      shouldNotifyListeners && this.notifyListeners("willUpdate");
-    }
-    update() {
-      this.updateScheduled = false;
-      const updateWasBlocked = this.isUpdateBlocked();
-      if (updateWasBlocked) {
-        const wasBlockedByResize = this.updateBlockedByResize;
-        this.unblockUpdate();
-        this.updateBlockedByResize = false;
-        this.clearAllSnapshots();
-        if (wasBlockedByResize) {
-          this.nodes.forEach(forceLayoutMeasure);
-        }
-        this.nodes.forEach(clearMeasurements);
-        return;
-      }
-      if (this.animationId <= this.animationCommitId) {
-        this.nodes.forEach(clearIsLayoutDirty);
-        return;
-      }
-      this.animationCommitId = this.animationId;
-      if (!this.isUpdating) {
-        this.nodes.forEach(clearIsLayoutDirty);
-      } else {
-        this.isUpdating = false;
-        this.nodes.forEach(ensureDraggedNodesSnapshotted);
-        this.nodes.forEach(resetTransformStyle);
-        this.nodes.forEach(updateLayout);
-        this.nodes.forEach(notifyLayoutUpdate);
-      }
-      this.clearAllSnapshots();
-      const now2 = time.now();
-      frameData.delta = clamp(0, 1e3 / 60, now2 - frameData.timestamp);
-      frameData.timestamp = now2;
-      frameData.isProcessing = true;
-      frameSteps.update.process(frameData);
-      frameSteps.preRender.process(frameData);
-      frameSteps.render.process(frameData);
-      frameData.isProcessing = false;
-    }
-    didUpdate() {
-      if (!this.updateScheduled) {
-        this.updateScheduled = true;
-        microtask.read(this.scheduleUpdate);
-      }
-    }
-    clearAllSnapshots() {
-      this.nodes.forEach(clearSnapshot);
-      this.sharedNodes.forEach(removeLeadSnapshots);
-    }
-    scheduleUpdateProjection() {
-      if (!this.projectionUpdateScheduled) {
-        this.projectionUpdateScheduled = true;
-        frame.preRender(this.updateProjection, false, true);
-      }
-    }
-    scheduleCheckAfterUnmount() {
-      frame.postRender(() => {
-        if (this.isLayoutDirty) {
-          this.root.didUpdate();
-        } else {
-          this.root.checkUpdateFailed();
-        }
-      });
-    }
-    /**
-     * Update measurements
-     */
-    updateSnapshot() {
-      if (this.snapshot || !this.instance)
-        return;
-      this.snapshot = this.measure();
-      if (this.snapshot && !calcLength(this.snapshot.measuredBox.x) && !calcLength(this.snapshot.measuredBox.y)) {
-        this.snapshot = void 0;
-      }
-    }
-    updateLayout() {
-      if (!this.instance)
-        return;
-      this.updateScroll();
-      if (!(this.options.alwaysMeasureLayout && this.isLead()) && !this.isLayoutDirty) {
-        return;
-      }
-      if (this.resumeFrom && !this.resumeFrom.instance) {
-        for (let i2 = 0; i2 < this.path.length; i2++) {
-          const node = this.path[i2];
-          node.updateScroll();
-        }
-      }
-      const prevLayout = this.layout;
-      this.layout = this.measure(false);
-      this.layoutVersion++;
-      if (!this.layoutCorrected)
-        this.layoutCorrected = createBox();
-      this.isLayoutDirty = false;
-      this.projectionDelta = void 0;
-      this.notifyListeners("measure", this.layout.layoutBox);
-      const { visualElement } = this.options;
-      visualElement && visualElement.notify("LayoutMeasure", this.layout.layoutBox, prevLayout ? prevLayout.layoutBox : void 0);
-    }
-    updateScroll(phase = "measure") {
-      let needsMeasurement = Boolean(this.options.layoutScroll && this.instance);
-      if (this.scroll && this.scroll.animationId === this.root.animationId && this.scroll.phase === phase) {
-        needsMeasurement = false;
-      }
-      if (needsMeasurement && this.instance) {
-        const isRoot = checkIsScrollRoot(this.instance);
-        this.scroll = {
-          animationId: this.root.animationId,
-          phase,
-          isRoot,
-          offset: measureScroll(this.instance),
-          wasRoot: this.scroll ? this.scroll.isRoot : isRoot
-        };
-      }
-    }
-    resetTransform() {
-      if (!resetTransform)
-        return;
-      const isResetRequested = this.isLayoutDirty || this.shouldResetTransform || this.options.alwaysMeasureLayout;
-      const hasProjection = this.projectionDelta && !isDeltaZero(this.projectionDelta);
-      const transformTemplate = this.getTransformTemplate();
-      const transformTemplateValue = transformTemplate ? transformTemplate(this.latestValues, "") : void 0;
-      const transformTemplateHasChanged = transformTemplateValue !== this.prevTransformTemplateValue;
-      if (isResetRequested && this.instance && (hasProjection || hasTransform(this.latestValues) || transformTemplateHasChanged)) {
-        resetTransform(this.instance, transformTemplateValue);
-        this.shouldResetTransform = false;
-        this.scheduleRender();
-      }
-    }
-    measure(removeTransform = true) {
-      const pageBox = this.measurePageBox();
-      let layoutBox = this.removeElementScroll(pageBox);
-      if (removeTransform) {
-        layoutBox = this.removeTransform(layoutBox);
-      }
-      roundBox(layoutBox);
-      return {
-        animationId: this.root.animationId,
-        measuredBox: pageBox,
-        layoutBox,
-        latestValues: {},
-        source: this.id
-      };
-    }
-    measurePageBox() {
-      var _a3;
-      const { visualElement } = this.options;
-      if (!visualElement)
-        return createBox();
-      const box = visualElement.measureViewportBox();
-      const wasInScrollRoot = ((_a3 = this.scroll) == null ? void 0 : _a3.wasRoot) || this.path.some(checkNodeWasScrollRoot);
-      if (!wasInScrollRoot) {
-        const { scroll } = this.root;
-        if (scroll) {
-          translateAxis(box.x, scroll.offset.x);
-          translateAxis(box.y, scroll.offset.y);
-        }
-      }
-      return box;
-    }
-    removeElementScroll(box) {
-      var _a3;
-      const boxWithoutScroll = createBox();
-      copyBoxInto(boxWithoutScroll, box);
-      if ((_a3 = this.scroll) == null ? void 0 : _a3.wasRoot) {
-        return boxWithoutScroll;
-      }
-      for (let i2 = 0; i2 < this.path.length; i2++) {
-        const node = this.path[i2];
-        const { scroll, options } = node;
-        if (node !== this.root && scroll && options.layoutScroll) {
-          if (scroll.wasRoot) {
-            copyBoxInto(boxWithoutScroll, box);
-          }
-          translateAxis(boxWithoutScroll.x, scroll.offset.x);
-          translateAxis(boxWithoutScroll.y, scroll.offset.y);
-        }
-      }
-      return boxWithoutScroll;
-    }
-    applyTransform(box, transformOnly = false, output) {
-      var _a3, _b3;
-      const withTransforms = output || createBox();
-      copyBoxInto(withTransforms, box);
-      for (let i2 = 0; i2 < this.path.length; i2++) {
-        const node = this.path[i2];
-        if (!transformOnly && node.options.layoutScroll && node.scroll && node !== node.root) {
-          translateAxis(withTransforms.x, -node.scroll.offset.x);
-          translateAxis(withTransforms.y, -node.scroll.offset.y);
-        }
-        if (!hasTransform(node.latestValues))
-          continue;
-        transformBox(withTransforms, node.latestValues, (_a3 = node.layout) == null ? void 0 : _a3.layoutBox);
-      }
-      if (hasTransform(this.latestValues)) {
-        transformBox(withTransforms, this.latestValues, (_b3 = this.layout) == null ? void 0 : _b3.layoutBox);
-      }
-      return withTransforms;
-    }
-    removeTransform(box) {
-      var _a3;
-      const boxWithoutTransform = createBox();
-      copyBoxInto(boxWithoutTransform, box);
-      for (let i2 = 0; i2 < this.path.length; i2++) {
-        const node = this.path[i2];
-        if (!hasTransform(node.latestValues))
-          continue;
-        let sourceBox;
-        if (node.instance) {
-          hasScale(node.latestValues) && node.updateSnapshot();
-          sourceBox = createBox();
-          copyBoxInto(sourceBox, node.measurePageBox());
-        }
-        removeBoxTransforms(boxWithoutTransform, node.latestValues, (_a3 = node.snapshot) == null ? void 0 : _a3.layoutBox, sourceBox);
-      }
-      if (hasTransform(this.latestValues)) {
-        removeBoxTransforms(boxWithoutTransform, this.latestValues);
-      }
-      return boxWithoutTransform;
-    }
-    setTargetDelta(delta) {
-      this.targetDelta = delta;
-      this.root.scheduleUpdateProjection();
-      this.isProjectionDirty = true;
-    }
-    setOptions(options) {
-      this.options = {
-        ...this.options,
-        ...options,
-        crossfade: options.crossfade !== void 0 ? options.crossfade : true
-      };
-    }
-    clearMeasurements() {
-      this.scroll = void 0;
-      this.layout = void 0;
-      this.snapshot = void 0;
-      this.prevTransformTemplateValue = void 0;
-      this.targetDelta = void 0;
-      this.target = void 0;
-      this.isLayoutDirty = false;
-    }
-    forceRelativeParentToResolveTarget() {
-      if (!this.relativeParent)
-        return;
-      if (this.relativeParent.resolvedRelativeTargetAt !== frameData.timestamp) {
-        this.relativeParent.resolveTargetDelta(true);
-      }
-    }
-    resolveTargetDelta(forceRecalculation = false) {
-      var _a3;
-      const lead = this.getLead();
-      this.isProjectionDirty || (this.isProjectionDirty = lead.isProjectionDirty);
-      this.isTransformDirty || (this.isTransformDirty = lead.isTransformDirty);
-      this.isSharedProjectionDirty || (this.isSharedProjectionDirty = lead.isSharedProjectionDirty);
-      const isShared = Boolean(this.resumingFrom) || this !== lead;
-      const canSkip = !(forceRecalculation || isShared && this.isSharedProjectionDirty || this.isProjectionDirty || ((_a3 = this.parent) == null ? void 0 : _a3.isProjectionDirty) || this.attemptToResolveRelativeTarget || this.root.updateBlockedByResize);
-      if (canSkip)
-        return;
-      const { layout: layout2, layoutId } = this.options;
-      if (!this.layout || !(layout2 || layoutId))
-        return;
-      this.resolvedRelativeTargetAt = frameData.timestamp;
-      const relativeParent = this.getClosestProjectingParent();
-      if (relativeParent && this.linkedParentVersion !== relativeParent.layoutVersion && !relativeParent.options.layoutRoot) {
-        this.removeRelativeTarget();
-      }
-      if (!this.targetDelta && !this.relativeTarget) {
-        if (this.options.layoutAnchor !== false && relativeParent && relativeParent.layout) {
-          this.createRelativeTarget(relativeParent, this.layout.layoutBox, relativeParent.layout.layoutBox);
-        } else {
-          this.removeRelativeTarget();
-        }
-      }
-      if (!this.relativeTarget && !this.targetDelta)
-        return;
-      if (!this.target) {
-        this.target = createBox();
-        this.targetWithTransforms = createBox();
-      }
-      if (this.relativeTarget && this.relativeTargetOrigin && this.relativeParent && this.relativeParent.target) {
-        this.forceRelativeParentToResolveTarget();
-        calcRelativeBox(this.target, this.relativeTarget, this.relativeParent.target, this.options.layoutAnchor || void 0);
-      } else if (this.targetDelta) {
-        if (Boolean(this.resumingFrom)) {
-          this.applyTransform(this.layout.layoutBox, false, this.target);
-        } else {
-          copyBoxInto(this.target, this.layout.layoutBox);
-        }
-        applyBoxDelta(this.target, this.targetDelta);
-      } else {
-        copyBoxInto(this.target, this.layout.layoutBox);
-      }
-      if (this.attemptToResolveRelativeTarget) {
-        this.attemptToResolveRelativeTarget = false;
-        if (this.options.layoutAnchor !== false && relativeParent && Boolean(relativeParent.resumingFrom) === Boolean(this.resumingFrom) && !relativeParent.options.layoutScroll && relativeParent.target && this.animationProgress !== 1) {
-          this.createRelativeTarget(relativeParent, this.target, relativeParent.target);
-        } else {
-          this.relativeParent = this.relativeTarget = void 0;
-        }
-      }
-    }
-    getClosestProjectingParent() {
-      if (!this.parent || hasScale(this.parent.latestValues) || has2DTranslate(this.parent.latestValues)) {
-        return void 0;
-      }
-      if (this.parent.isProjecting()) {
-        return this.parent;
-      } else {
-        return this.parent.getClosestProjectingParent();
-      }
-    }
-    isProjecting() {
-      return Boolean((this.relativeTarget || this.targetDelta || this.options.layoutRoot) && this.layout);
-    }
-    createRelativeTarget(relativeParent, layout2, parentLayout) {
-      this.relativeParent = relativeParent;
-      this.linkedParentVersion = relativeParent.layoutVersion;
-      this.forceRelativeParentToResolveTarget();
-      this.relativeTarget = createBox();
-      this.relativeTargetOrigin = createBox();
-      calcRelativePosition(this.relativeTargetOrigin, layout2, parentLayout, this.options.layoutAnchor || void 0);
-      copyBoxInto(this.relativeTarget, this.relativeTargetOrigin);
-    }
-    removeRelativeTarget() {
-      this.relativeParent = this.relativeTarget = void 0;
-    }
-    calcProjection() {
-      var _a3;
-      const lead = this.getLead();
-      const isShared = Boolean(this.resumingFrom) || this !== lead;
-      let canSkip = true;
-      if (this.isProjectionDirty || ((_a3 = this.parent) == null ? void 0 : _a3.isProjectionDirty)) {
-        canSkip = false;
-      }
-      if (isShared && (this.isSharedProjectionDirty || this.isTransformDirty)) {
-        canSkip = false;
-      }
-      if (this.resolvedRelativeTargetAt === frameData.timestamp) {
-        canSkip = false;
-      }
-      if (canSkip)
-        return;
-      const { layout: layout2, layoutId } = this.options;
-      this.isTreeAnimating = Boolean(this.parent && this.parent.isTreeAnimating || this.currentAnimation || this.pendingAnimation);
-      if (!this.isTreeAnimating) {
-        this.targetDelta = this.relativeTarget = void 0;
-      }
-      if (!this.layout || !(layout2 || layoutId))
-        return;
-      copyBoxInto(this.layoutCorrected, this.layout.layoutBox);
-      const prevTreeScaleX = this.treeScale.x;
-      const prevTreeScaleY = this.treeScale.y;
-      applyTreeDeltas(this.layoutCorrected, this.treeScale, this.path, isShared);
-      if (lead.layout && !lead.target && (this.treeScale.x !== 1 || this.treeScale.y !== 1)) {
-        lead.target = lead.layout.layoutBox;
-        lead.targetWithTransforms = createBox();
-      }
-      const { target } = lead;
-      if (!target) {
-        if (this.prevProjectionDelta) {
-          this.createProjectionDeltas();
-          this.scheduleRender();
-        }
-        return;
-      }
-      if (!this.projectionDelta || !this.prevProjectionDelta) {
-        this.createProjectionDeltas();
-      } else {
-        copyAxisDeltaInto(this.prevProjectionDelta.x, this.projectionDelta.x);
-        copyAxisDeltaInto(this.prevProjectionDelta.y, this.projectionDelta.y);
-      }
-      calcBoxDelta(this.projectionDelta, this.layoutCorrected, target, this.latestValues);
-      if (this.treeScale.x !== prevTreeScaleX || this.treeScale.y !== prevTreeScaleY || !axisDeltaEquals(this.projectionDelta.x, this.prevProjectionDelta.x) || !axisDeltaEquals(this.projectionDelta.y, this.prevProjectionDelta.y)) {
-        this.hasProjected = true;
-        this.scheduleRender();
-        this.notifyListeners("projectionUpdate", target);
-      }
-    }
-    hide() {
-      this.isVisible = false;
-    }
-    show() {
-      this.isVisible = true;
-    }
-    scheduleRender(notifyAll2 = true) {
-      var _a3;
-      (_a3 = this.options.visualElement) == null ? void 0 : _a3.scheduleRender();
-      if (notifyAll2) {
-        const stack = this.getStack();
-        stack && stack.scheduleRender();
-      }
-      if (this.resumingFrom && !this.resumingFrom.instance) {
-        this.resumingFrom = void 0;
-      }
-    }
-    createProjectionDeltas() {
-      this.prevProjectionDelta = createDelta();
-      this.projectionDelta = createDelta();
-      this.projectionDeltaWithTransform = createDelta();
-    }
-    setAnimationOrigin(delta, hasOnlyRelativeTargetChanged = false) {
-      const snapshot = this.snapshot;
-      const snapshotLatestValues = snapshot ? snapshot.latestValues : {};
-      const mixedValues = { ...this.latestValues };
-      const targetDelta = createDelta();
-      if (!this.relativeParent || !this.relativeParent.options.layoutRoot) {
-        this.relativeTarget = this.relativeTargetOrigin = void 0;
-      }
-      this.attemptToResolveRelativeTarget = !hasOnlyRelativeTargetChanged;
-      const relativeLayout = createBox();
-      const snapshotSource = snapshot ? snapshot.source : void 0;
-      const layoutSource = this.layout ? this.layout.source : void 0;
-      const isSharedLayoutAnimation = snapshotSource !== layoutSource;
-      const stack = this.getStack();
-      const isOnlyMember = !stack || stack.members.length <= 1;
-      const shouldCrossfadeOpacity = Boolean(isSharedLayoutAnimation && !isOnlyMember && this.options.crossfade === true && !this.path.some(hasOpacityCrossfade));
-      this.animationProgress = 0;
-      let prevRelativeTarget;
-      this.mixTargetDelta = (latest) => {
-        const progress2 = latest / 1e3;
-        mixAxisDelta(targetDelta.x, delta.x, progress2);
-        mixAxisDelta(targetDelta.y, delta.y, progress2);
-        this.setTargetDelta(targetDelta);
-        if (this.relativeTarget && this.relativeTargetOrigin && this.layout && this.relativeParent && this.relativeParent.layout) {
-          calcRelativePosition(relativeLayout, this.layout.layoutBox, this.relativeParent.layout.layoutBox, this.options.layoutAnchor || void 0);
-          mixBox(this.relativeTarget, this.relativeTargetOrigin, relativeLayout, progress2);
-          if (prevRelativeTarget && boxEquals(this.relativeTarget, prevRelativeTarget)) {
-            this.isProjectionDirty = false;
-          }
-          if (!prevRelativeTarget)
-            prevRelativeTarget = createBox();
-          copyBoxInto(prevRelativeTarget, this.relativeTarget);
-        }
-        if (isSharedLayoutAnimation) {
-          this.animationValues = mixedValues;
-          mixValues(mixedValues, snapshotLatestValues, this.latestValues, progress2, shouldCrossfadeOpacity, isOnlyMember);
-        }
-        this.root.scheduleUpdateProjection();
-        this.scheduleRender();
-        this.animationProgress = progress2;
-      };
-      this.mixTargetDelta(this.options.layoutRoot ? 1e3 : 0);
-    }
-    startAnimation(options) {
-      var _a3, _b3, _c2;
-      this.notifyListeners("animationStart");
-      (_a3 = this.currentAnimation) == null ? void 0 : _a3.stop();
-      (_c2 = (_b3 = this.resumingFrom) == null ? void 0 : _b3.currentAnimation) == null ? void 0 : _c2.stop();
-      if (this.pendingAnimation) {
-        cancelFrame(this.pendingAnimation);
-        this.pendingAnimation = void 0;
-      }
-      this.pendingAnimation = frame.update(() => {
-        globalProjectionState.hasAnimatedSinceResize = true;
-        this.motionValue || (this.motionValue = motionValue(0));
-        this.motionValue.jump(0, false);
-        this.currentAnimation = animateSingleValue(this.motionValue, [0, 1e3], {
-          ...options,
-          velocity: 0,
-          isSync: true,
-          onUpdate: (latest) => {
-            this.mixTargetDelta(latest);
-            options.onUpdate && options.onUpdate(latest);
-          },
-          onStop: () => {
-          },
-          onComplete: () => {
-            options.onComplete && options.onComplete();
-            this.completeAnimation();
-          }
-        });
-        if (this.resumingFrom) {
-          this.resumingFrom.currentAnimation = this.currentAnimation;
-        }
-        this.pendingAnimation = void 0;
-      });
-    }
-    completeAnimation() {
-      if (this.resumingFrom) {
-        this.resumingFrom.currentAnimation = void 0;
-        this.resumingFrom.preserveOpacity = void 0;
-      }
-      const stack = this.getStack();
-      stack && stack.exitAnimationComplete();
-      this.resumingFrom = this.currentAnimation = this.animationValues = void 0;
-      this.notifyListeners("animationComplete");
-    }
-    finishAnimation() {
-      if (this.currentAnimation) {
-        this.mixTargetDelta && this.mixTargetDelta(animationTarget);
-        this.currentAnimation.stop();
-      }
-      this.completeAnimation();
-    }
-    applyTransformsToTarget() {
-      const lead = this.getLead();
-      let { targetWithTransforms, target, layout: layout2, latestValues } = lead;
-      if (!targetWithTransforms || !target || !layout2)
-        return;
-      if (this !== lead && this.layout && layout2 && shouldAnimatePositionOnly(this.options.animationType, this.layout.layoutBox, layout2.layoutBox)) {
-        target = this.target || createBox();
-        const xLength = calcLength(this.layout.layoutBox.x);
-        target.x.min = lead.target.x.min;
-        target.x.max = target.x.min + xLength;
-        const yLength = calcLength(this.layout.layoutBox.y);
-        target.y.min = lead.target.y.min;
-        target.y.max = target.y.min + yLength;
-      }
-      copyBoxInto(targetWithTransforms, target);
-      transformBox(targetWithTransforms, latestValues);
-      calcBoxDelta(this.projectionDeltaWithTransform, this.layoutCorrected, targetWithTransforms, latestValues);
-    }
-    registerSharedNode(layoutId, node) {
-      if (!this.sharedNodes.has(layoutId)) {
-        this.sharedNodes.set(layoutId, new NodeStack());
-      }
-      const stack = this.sharedNodes.get(layoutId);
-      stack.add(node);
-      const config2 = node.options.initialPromotionConfig;
-      node.promote({
-        transition: config2 ? config2.transition : void 0,
-        preserveFollowOpacity: config2 && config2.shouldPreserveFollowOpacity ? config2.shouldPreserveFollowOpacity(node) : void 0
-      });
-    }
-    isLead() {
-      const stack = this.getStack();
-      return stack ? stack.lead === this : true;
-    }
-    getLead() {
-      var _a3;
-      const { layoutId } = this.options;
-      return layoutId ? ((_a3 = this.getStack()) == null ? void 0 : _a3.lead) || this : this;
-    }
-    getPrevLead() {
-      var _a3;
-      const { layoutId } = this.options;
-      return layoutId ? (_a3 = this.getStack()) == null ? void 0 : _a3.prevLead : void 0;
-    }
-    getStack() {
-      const { layoutId } = this.options;
-      if (layoutId)
-        return this.root.sharedNodes.get(layoutId);
-    }
-    promote({ needsReset, transition, preserveFollowOpacity } = {}) {
-      const stack = this.getStack();
-      if (stack)
-        stack.promote(this, preserveFollowOpacity);
-      if (needsReset) {
-        this.projectionDelta = void 0;
-        this.needsReset = true;
-      }
-      if (transition)
-        this.setOptions({ transition });
-    }
-    relegate() {
-      const stack = this.getStack();
-      if (stack) {
-        return stack.relegate(this);
-      } else {
-        return false;
-      }
-    }
-    resetSkewAndRotation() {
-      const { visualElement } = this.options;
-      if (!visualElement)
-        return;
-      let hasDistortingTransform = false;
-      const { latestValues } = visualElement;
-      if (latestValues.z || latestValues.rotate || latestValues.rotateX || latestValues.rotateY || latestValues.rotateZ || latestValues.skewX || latestValues.skewY) {
-        hasDistortingTransform = true;
-      }
-      if (!hasDistortingTransform)
-        return;
-      const resetValues = {};
-      if (latestValues.z) {
-        resetDistortingTransform("z", visualElement, resetValues, this.animationValues);
-      }
-      for (let i2 = 0; i2 < transformAxes.length; i2++) {
-        resetDistortingTransform(`rotate${transformAxes[i2]}`, visualElement, resetValues, this.animationValues);
-        resetDistortingTransform(`skew${transformAxes[i2]}`, visualElement, resetValues, this.animationValues);
-      }
-      visualElement.render();
-      for (const key in resetValues) {
-        visualElement.setStaticValue(key, resetValues[key]);
-        if (this.animationValues) {
-          this.animationValues[key] = resetValues[key];
-        }
-      }
-      visualElement.scheduleRender();
-    }
-    applyProjectionStyles(targetStyle, styleProp) {
-      if (!this.instance || this.isSVG)
-        return;
-      if (!this.isVisible) {
-        targetStyle.visibility = "hidden";
-        return;
-      }
-      const transformTemplate = this.getTransformTemplate();
-      if (this.needsReset) {
-        this.needsReset = false;
-        targetStyle.visibility = "";
-        targetStyle.opacity = "";
-        targetStyle.pointerEvents = resolveMotionValue(styleProp == null ? void 0 : styleProp.pointerEvents) || "";
-        targetStyle.transform = transformTemplate ? transformTemplate(this.latestValues, "") : "none";
-        return;
-      }
-      const lead = this.getLead();
-      if (!this.projectionDelta || !this.layout || !lead.target) {
-        if (this.options.layoutId) {
-          targetStyle.opacity = this.latestValues.opacity !== void 0 ? this.latestValues.opacity : 1;
-          targetStyle.pointerEvents = resolveMotionValue(styleProp == null ? void 0 : styleProp.pointerEvents) || "";
-        }
-        if (this.hasProjected && !hasTransform(this.latestValues)) {
-          targetStyle.transform = transformTemplate ? transformTemplate({}, "") : "none";
-          this.hasProjected = false;
-        }
-        return;
-      }
-      targetStyle.visibility = "";
-      const valuesToRender = lead.animationValues || lead.latestValues;
-      this.applyTransformsToTarget();
-      let transform = buildProjectionTransform(this.projectionDeltaWithTransform, this.treeScale, valuesToRender);
-      if (transformTemplate) {
-        transform = transformTemplate(valuesToRender, transform);
-      }
-      targetStyle.transform = transform;
-      const { x: x3, y: y2 } = this.projectionDelta;
-      targetStyle.transformOrigin = `${x3.origin * 100}% ${y2.origin * 100}% 0`;
-      if (lead.animationValues) {
-        targetStyle.opacity = lead === this ? valuesToRender.opacity ?? this.latestValues.opacity ?? 1 : this.preserveOpacity ? this.latestValues.opacity : valuesToRender.opacityExit;
-      } else {
-        targetStyle.opacity = lead === this ? valuesToRender.opacity !== void 0 ? valuesToRender.opacity : "" : valuesToRender.opacityExit !== void 0 ? valuesToRender.opacityExit : 0;
-      }
-      for (const key in scaleCorrectors) {
-        if (valuesToRender[key] === void 0)
-          continue;
-        const { correct, applyTo, isCSSVariable } = scaleCorrectors[key];
-        const corrected = transform === "none" ? valuesToRender[key] : correct(valuesToRender[key], lead);
-        if (applyTo) {
-          const num = applyTo.length;
-          for (let i2 = 0; i2 < num; i2++) {
-            targetStyle[applyTo[i2]] = corrected;
-          }
-        } else {
-          if (isCSSVariable) {
-            this.options.visualElement.renderState.vars[key] = corrected;
-          } else {
-            targetStyle[key] = corrected;
-          }
-        }
-      }
-      if (this.options.layoutId) {
-        targetStyle.pointerEvents = lead === this ? resolveMotionValue(styleProp == null ? void 0 : styleProp.pointerEvents) || "" : "none";
-      }
-    }
-    clearSnapshot() {
-      this.resumeFrom = this.snapshot = void 0;
-    }
-    // Only run on root
-    resetTree() {
-      this.root.nodes.forEach((node) => {
-        var _a3;
-        return (_a3 = node.currentAnimation) == null ? void 0 : _a3.stop();
-      });
-      this.root.nodes.forEach(clearMeasurements);
-      this.root.sharedNodes.clear();
-    }
-  };
-}
-function updateLayout(node) {
-  node.updateLayout();
-}
-function notifyLayoutUpdate(node) {
-  var _a3;
-  const snapshot = ((_a3 = node.resumeFrom) == null ? void 0 : _a3.snapshot) || node.snapshot;
-  if (node.isLead() && node.layout && snapshot && node.hasListeners("didUpdate")) {
-    const { layoutBox: layout2, measuredBox: measuredLayout } = node.layout;
-    const { animationType } = node.options;
-    const isShared = snapshot.source !== node.layout.source;
-    if (animationType === "size") {
-      eachAxis((axis) => {
-        const axisSnapshot = isShared ? snapshot.measuredBox[axis] : snapshot.layoutBox[axis];
-        const length = calcLength(axisSnapshot);
-        axisSnapshot.min = layout2[axis].min;
-        axisSnapshot.max = axisSnapshot.min + length;
-      });
-    } else if (animationType === "x" || animationType === "y") {
-      const snapAxis = animationType === "x" ? "y" : "x";
-      copyAxisInto(isShared ? snapshot.measuredBox[snapAxis] : snapshot.layoutBox[snapAxis], layout2[snapAxis]);
-    } else if (shouldAnimatePositionOnly(animationType, snapshot.layoutBox, layout2)) {
-      eachAxis((axis) => {
-        const axisSnapshot = isShared ? snapshot.measuredBox[axis] : snapshot.layoutBox[axis];
-        const length = calcLength(layout2[axis]);
-        axisSnapshot.max = axisSnapshot.min + length;
-        if (node.relativeTarget && !node.currentAnimation) {
-          node.isProjectionDirty = true;
-          node.relativeTarget[axis].max = node.relativeTarget[axis].min + length;
-        }
-      });
-    }
-    const layoutDelta = createDelta();
-    calcBoxDelta(layoutDelta, layout2, snapshot.layoutBox);
-    const visualDelta = createDelta();
-    if (isShared) {
-      calcBoxDelta(visualDelta, node.applyTransform(measuredLayout, true), snapshot.measuredBox);
-    } else {
-      calcBoxDelta(visualDelta, layout2, snapshot.layoutBox);
-    }
-    const hasLayoutChanged = !isDeltaZero(layoutDelta);
-    let hasRelativeLayoutChanged = false;
-    if (!node.resumeFrom) {
-      const relativeParent = node.getClosestProjectingParent();
-      if (relativeParent && !relativeParent.resumeFrom) {
-        const { snapshot: parentSnapshot, layout: parentLayout } = relativeParent;
-        if (parentSnapshot && parentLayout) {
-          const anchor = node.options.layoutAnchor || void 0;
-          const relativeSnapshot = createBox();
-          calcRelativePosition(relativeSnapshot, snapshot.layoutBox, parentSnapshot.layoutBox, anchor);
-          const relativeLayout = createBox();
-          calcRelativePosition(relativeLayout, layout2, parentLayout.layoutBox, anchor);
-          if (!boxEqualsRounded(relativeSnapshot, relativeLayout)) {
-            hasRelativeLayoutChanged = true;
-          }
-          if (relativeParent.options.layoutRoot) {
-            node.relativeTarget = relativeLayout;
-            node.relativeTargetOrigin = relativeSnapshot;
-            node.relativeParent = relativeParent;
-          }
-        }
-      }
-    }
-    node.notifyListeners("didUpdate", {
-      layout: layout2,
-      snapshot,
-      delta: visualDelta,
-      layoutDelta,
-      hasLayoutChanged,
-      hasRelativeLayoutChanged
-    });
-  } else if (node.isLead()) {
-    const { onExitComplete } = node.options;
-    onExitComplete && onExitComplete();
-  }
-  node.options.transition = void 0;
-}
-function propagateDirtyNodes(node) {
-  if (!node.parent)
-    return;
-  if (!node.isProjecting()) {
-    node.isProjectionDirty = node.parent.isProjectionDirty;
-  }
-  node.isSharedProjectionDirty || (node.isSharedProjectionDirty = Boolean(node.isProjectionDirty || node.parent.isProjectionDirty || node.parent.isSharedProjectionDirty));
-  node.isTransformDirty || (node.isTransformDirty = node.parent.isTransformDirty);
-}
-function cleanDirtyNodes(node) {
-  node.isProjectionDirty = node.isSharedProjectionDirty = node.isTransformDirty = false;
-}
-function clearSnapshot(node) {
-  node.clearSnapshot();
-}
-function clearMeasurements(node) {
-  node.clearMeasurements();
-}
-function forceLayoutMeasure(node) {
-  node.isLayoutDirty = true;
-  node.updateLayout();
-}
-function clearIsLayoutDirty(node) {
-  node.isLayoutDirty = false;
-}
-function ensureDraggedNodesSnapshotted(node) {
-  if (node.isAnimationBlocked && node.layout && !node.isLayoutDirty) {
-    node.snapshot = node.layout;
-    node.isLayoutDirty = true;
-  }
-}
-function resetTransformStyle(node) {
-  const { visualElement } = node.options;
-  if (visualElement && visualElement.getProps().onBeforeLayoutMeasure) {
-    visualElement.notify("BeforeLayoutMeasure");
-  }
-  node.resetTransform();
-}
-function finishAnimation(node) {
-  node.finishAnimation();
-  node.targetDelta = node.relativeTarget = node.target = void 0;
-  node.isProjectionDirty = true;
-}
-function resolveTargetDelta(node) {
-  node.resolveTargetDelta();
-}
-function calcProjection(node) {
-  node.calcProjection();
-}
-function resetSkewAndRotation(node) {
-  node.resetSkewAndRotation();
-}
-function removeLeadSnapshots(stack) {
-  stack.removeLeadSnapshot();
-}
-function mixAxisDelta(output, delta, p2) {
-  output.translate = mixNumber$1(delta.translate, 0, p2);
-  output.scale = mixNumber$1(delta.scale, 1, p2);
-  output.origin = delta.origin;
-  output.originPoint = delta.originPoint;
-}
-function mixAxis(output, from, to, p2) {
-  output.min = mixNumber$1(from.min, to.min, p2);
-  output.max = mixNumber$1(from.max, to.max, p2);
-}
-function mixBox(output, from, to, p2) {
-  mixAxis(output.x, from.x, to.x, p2);
-  mixAxis(output.y, from.y, to.y, p2);
-}
-function hasOpacityCrossfade(node) {
-  return node.animationValues && node.animationValues.opacityExit !== void 0;
-}
-const defaultLayoutTransition = {
-  duration: 0.45,
-  ease: [0.4, 0, 0.1, 1]
-};
-const userAgentContains = (string2) => typeof navigator !== "undefined" && navigator.userAgent && navigator.userAgent.toLowerCase().includes(string2);
-const roundPoint = userAgentContains("applewebkit/") && !userAgentContains("chrome/") ? Math.round : noop;
-function roundAxis(axis) {
-  axis.min = roundPoint(axis.min);
-  axis.max = roundPoint(axis.max);
-}
-function roundBox(box) {
-  roundAxis(box.x);
-  roundAxis(box.y);
-}
-function shouldAnimatePositionOnly(animationType, snapshot, layout2) {
-  return animationType === "position" || animationType === "preserve-aspect" && !isNear(aspectRatio(snapshot), aspectRatio(layout2), 0.2);
-}
-function checkNodeWasScrollRoot(node) {
-  var _a3;
-  return node !== node.root && ((_a3 = node.scroll) == null ? void 0 : _a3.wasRoot);
-}
-const DocumentProjectionNode = createProjectionNode$1({
-  attachResizeListener: (ref, notify) => addDomEvent(ref, "resize", notify),
-  measureScroll: () => {
-    var _a3, _b3;
-    return {
-      x: document.documentElement.scrollLeft || ((_a3 = document.body) == null ? void 0 : _a3.scrollLeft) || 0,
-      y: document.documentElement.scrollTop || ((_b3 = document.body) == null ? void 0 : _b3.scrollTop) || 0
-    };
-  },
-  checkIsScrollRoot: () => true
-});
-const rootProjectionNode = {
-  current: void 0
-};
-const HTMLProjectionNode = createProjectionNode$1({
-  measureScroll: (instance) => ({
-    x: instance.scrollLeft,
-    y: instance.scrollTop
-  }),
-  defaultParent: () => {
-    if (!rootProjectionNode.current) {
-      const documentNode = new DocumentProjectionNode({});
-      documentNode.mount(window);
-      documentNode.setOptions({ layoutScroll: true });
-      rootProjectionNode.current = documentNode;
-    }
-    return rootProjectionNode.current;
-  },
-  resetTransform: (instance, value) => {
-    instance.style.transform = value !== void 0 ? value : "none";
-  },
-  checkIsScrollRoot: (instance) => Boolean(window.getComputedStyle(instance).position === "fixed")
-});
-const MotionConfigContext = reactExports.createContext({
-  transformPagePoint: (p2) => p2,
-  isStatic: false,
-  reducedMotion: "never"
-});
-function usePresence(subscribe2 = true) {
-  const context = reactExports.useContext(PresenceContext);
-  if (context === null)
-    return [true, null];
-  const { isPresent, onExitComplete, register } = context;
-  const id2 = reactExports.useId();
+  const started = reactExports.useRef(false);
   reactExports.useEffect(() => {
-    if (subscribe2) {
-      return register(id2);
-    }
-  }, [subscribe2]);
-  const safeToRemove = reactExports.useCallback(() => subscribe2 && onExitComplete && onExitComplete(id2), [id2, onExitComplete, subscribe2]);
-  return !isPresent && onExitComplete ? [false, safeToRemove] : [true];
-}
-const LazyContext = reactExports.createContext({ strict: false });
-const featureProps = {
-  animation: [
-    "animate",
-    "variants",
-    "whileHover",
-    "whileTap",
-    "exit",
-    "whileInView",
-    "whileFocus",
-    "whileDrag"
-  ],
-  exit: ["exit"],
-  drag: ["drag", "dragControls"],
-  focus: ["whileFocus"],
-  hover: ["whileHover", "onHoverStart", "onHoverEnd"],
-  tap: ["whileTap", "onTap", "onTapStart", "onTapCancel"],
-  pan: ["onPan", "onPanStart", "onPanSessionStart", "onPanEnd"],
-  inView: ["whileInView", "onViewportEnter", "onViewportLeave"],
-  layout: ["layout", "layoutId"]
-};
-let isInitialized = false;
-function initFeatureDefinitions() {
-  if (isInitialized)
-    return;
-  const initialFeatureDefinitions = {};
-  for (const key in featureProps) {
-    initialFeatureDefinitions[key] = {
-      isEnabled: (props) => featureProps[key].some((name) => !!props[name])
-    };
-  }
-  setFeatureDefinitions(initialFeatureDefinitions);
-  isInitialized = true;
-}
-function getInitializedFeatureDefinitions() {
-  initFeatureDefinitions();
-  return getFeatureDefinitions();
-}
-function loadFeatures(features) {
-  const featureDefinitions2 = getInitializedFeatureDefinitions();
-  for (const key in features) {
-    featureDefinitions2[key] = {
-      ...featureDefinitions2[key],
-      ...features[key]
-    };
-  }
-  setFeatureDefinitions(featureDefinitions2);
-}
-const validMotionProps = /* @__PURE__ */ new Set([
-  "animate",
-  "exit",
-  "variants",
-  "initial",
-  "style",
-  "values",
-  "variants",
-  "transition",
-  "transformTemplate",
-  "custom",
-  "inherit",
-  "onBeforeLayoutMeasure",
-  "onAnimationStart",
-  "onAnimationComplete",
-  "onUpdate",
-  "onDragStart",
-  "onDrag",
-  "onDragEnd",
-  "onMeasureDragConstraints",
-  "onDirectionLock",
-  "onDragTransitionEnd",
-  "_dragX",
-  "_dragY",
-  "onHoverStart",
-  "onHoverEnd",
-  "onViewportEnter",
-  "onViewportLeave",
-  "globalTapTarget",
-  "propagate",
-  "ignoreStrict",
-  "viewport"
-]);
-function isValidMotionProp(key) {
-  return key.startsWith("while") || key.startsWith("drag") && key !== "draggable" || key.startsWith("layout") || key.startsWith("onTap") || key.startsWith("onPan") || key.startsWith("onLayout") || validMotionProps.has(key);
-}
-let shouldForward = (key) => !isValidMotionProp(key);
-function loadExternalIsValidProp(isValidProp) {
-  if (typeof isValidProp !== "function")
-    return;
-  shouldForward = (key) => key.startsWith("on") ? !isValidMotionProp(key) : isValidProp(key);
-}
-try {
-  const emotionPkg = "@emotion/is-prop-valid";
-  loadExternalIsValidProp(require(emotionPkg).default);
-} catch {
-}
-function filterProps2(props, isDom, forwardMotionProps) {
-  const filteredProps = {};
-  for (const key in props) {
-    if (key === "values" && typeof props.values === "object")
-      continue;
-    if (isMotionValue(props[key]))
-      continue;
-    if (shouldForward(key) || forwardMotionProps === true && isValidMotionProp(key) || !isDom && !isValidMotionProp(key) || // If trying to use native HTML drag events, forward drag listeners
-    props["draggable"] && key.startsWith("onDrag")) {
-      filteredProps[key] = props[key];
-    }
-  }
-  return filteredProps;
-}
-const MotionContext = /* @__PURE__ */ reactExports.createContext({});
-function getCurrentTreeVariants(props, context) {
-  if (isControllingVariants(props)) {
-    const { initial, animate } = props;
-    return {
-      initial: initial === false || isVariantLabel(initial) ? initial : void 0,
-      animate: isVariantLabel(animate) ? animate : void 0
-    };
-  }
-  return props.inherit !== false ? context : {};
-}
-function useCreateMotionContext(props) {
-  const { initial, animate } = getCurrentTreeVariants(props, reactExports.useContext(MotionContext));
-  return reactExports.useMemo(() => ({ initial, animate }), [variantLabelsAsDependency(initial), variantLabelsAsDependency(animate)]);
-}
-function variantLabelsAsDependency(prop) {
-  return Array.isArray(prop) ? prop.join(" ") : prop;
-}
-const createHtmlRenderState = () => ({
-  style: {},
-  transform: {},
-  transformOrigin: {},
-  vars: {}
-});
-function copyRawValuesOnly(target, source, props) {
-  for (const key in source) {
-    if (!isMotionValue(source[key]) && !isForcedMotionValue(key, props)) {
-      target[key] = source[key];
-    }
-  }
-}
-function useInitialMotionValues({ transformTemplate }, visualState) {
-  return reactExports.useMemo(() => {
-    const state = createHtmlRenderState();
-    buildHTMLStyles(state, visualState, transformTemplate);
-    return Object.assign({}, state.vars, state.style);
-  }, [visualState]);
-}
-function useStyle(props, visualState) {
-  const styleProp = props.style || {};
-  const style2 = {};
-  copyRawValuesOnly(style2, styleProp, props);
-  Object.assign(style2, useInitialMotionValues(props, visualState));
-  return style2;
-}
-function useHTMLProps(props, visualState) {
-  const htmlProps = {};
-  const style2 = useStyle(props, visualState);
-  if (props.drag && props.dragListener !== false) {
-    htmlProps.draggable = false;
-    style2.userSelect = style2.WebkitUserSelect = style2.WebkitTouchCallout = "none";
-    style2.touchAction = props.drag === true ? "none" : `pan-${props.drag === "x" ? "y" : "x"}`;
-  }
-  if (props.tabIndex === void 0 && (props.onTap || props.onTapStart || props.whileTap)) {
-    htmlProps.tabIndex = 0;
-  }
-  htmlProps.style = style2;
-  return htmlProps;
-}
-const createSvgRenderState = () => ({
-  ...createHtmlRenderState(),
-  attrs: {}
-});
-function useSVGProps(props, visualState, _isStatic, Component2) {
-  const visualProps = reactExports.useMemo(() => {
-    const state = createSvgRenderState();
-    buildSVGAttrs(state, visualState, isSVGTag(Component2), props.transformTemplate, props.style);
-    return {
-      ...state.attrs,
-      style: { ...state.style }
-    };
-  }, [visualState]);
-  if (props.style) {
-    const rawStyles = {};
-    copyRawValuesOnly(rawStyles, props.style, props);
-    visualProps.style = { ...rawStyles, ...visualProps.style };
-  }
-  return visualProps;
-}
-const lowercaseSVGElements = [
-  "animate",
-  "circle",
-  "defs",
-  "desc",
-  "ellipse",
-  "g",
-  "image",
-  "line",
-  "filter",
-  "marker",
-  "mask",
-  "metadata",
-  "path",
-  "pattern",
-  "polygon",
-  "polyline",
-  "rect",
-  "stop",
-  "switch",
-  "symbol",
-  "svg",
-  "text",
-  "tspan",
-  "use",
-  "view"
-];
-function isSVGComponent(Component2) {
-  if (
-    /**
-     * If it's not a string, it's a custom React component. Currently we only support
-     * HTML custom React components.
-     */
-    typeof Component2 !== "string" || /**
-     * If it contains a dash, the element is a custom HTML webcomponent.
-     */
-    Component2.includes("-")
-  ) {
-    return false;
-  } else if (
-    /**
-     * If it's in our list of lowercase SVG tags, it's an SVG component
-     */
-    lowercaseSVGElements.indexOf(Component2) > -1 || /**
-     * If it contains a capital letter, it's an SVG component
-     */
-    /[A-Z]/u.test(Component2)
-  ) {
-    return true;
-  }
-  return false;
-}
-function useRender(Component2, props, ref, { latestValues }, isStatic, forwardMotionProps = false, isSVG) {
-  const useVisualProps = isSVG ?? isSVGComponent(Component2) ? useSVGProps : useHTMLProps;
-  const visualProps = useVisualProps(props, latestValues, isStatic, Component2);
-  const filteredProps = filterProps2(props, typeof Component2 === "string", forwardMotionProps);
-  const elementProps = Component2 !== reactExports.Fragment ? { ...filteredProps, ...visualProps, ref } : {};
-  const { children } = props;
-  const renderedChildren = reactExports.useMemo(() => isMotionValue(children) ? children.get() : children, [children]);
-  return reactExports.createElement(Component2, {
-    ...elementProps,
-    children: renderedChildren
-  });
-}
-function makeState({ scrapeMotionValuesFromProps: scrapeMotionValuesFromProps2, createRenderState }, props, context, presenceContext) {
-  const state = {
-    latestValues: makeLatestValues(props, context, presenceContext, scrapeMotionValuesFromProps2),
-    renderState: createRenderState()
-  };
-  return state;
-}
-function makeLatestValues(props, context, presenceContext, scrapeMotionValues) {
-  const values = {};
-  const motionValues = scrapeMotionValues(props, {});
-  for (const key in motionValues) {
-    values[key] = resolveMotionValue(motionValues[key]);
-  }
-  let { initial, animate } = props;
-  const isControllingVariants$1 = isControllingVariants(props);
-  const isVariantNode$1 = isVariantNode(props);
-  if (context && isVariantNode$1 && !isControllingVariants$1 && props.inherit !== false) {
-    if (initial === void 0)
-      initial = context.initial;
-    if (animate === void 0)
-      animate = context.animate;
-  }
-  let isInitialAnimationBlocked = presenceContext ? presenceContext.initial === false : false;
-  isInitialAnimationBlocked = isInitialAnimationBlocked || initial === false;
-  const variantToSet = isInitialAnimationBlocked ? animate : initial;
-  if (variantToSet && typeof variantToSet !== "boolean" && !isAnimationControls(variantToSet)) {
-    const list = Array.isArray(variantToSet) ? variantToSet : [variantToSet];
-    for (let i2 = 0; i2 < list.length; i2++) {
-      const resolved = resolveVariantFromProps(props, list[i2]);
-      if (resolved) {
-        const { transitionEnd, transition, ...target } = resolved;
-        for (const key in target) {
-          let valueTarget = target[key];
-          if (Array.isArray(valueTarget)) {
-            const index2 = isInitialAnimationBlocked ? valueTarget.length - 1 : 0;
-            valueTarget = valueTarget[index2];
-          }
-          if (valueTarget !== null) {
-            values[key] = valueTarget;
-          }
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !started.current) {
+          started.current = true;
+          const start = Date.now();
+          const tick = () => {
+            const elapsed = Date.now() - start;
+            const progress = Math.min(elapsed / duration, 1);
+            const ease = 1 - (1 - progress) ** 3;
+            setCount(Math.round(target * ease));
+            if (progress < 1) requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
         }
-        for (const key in transitionEnd) {
-          values[key] = transitionEnd[key];
-        }
-      }
-    }
-  }
-  return values;
+      },
+      { threshold: 0.3 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [target, duration]);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { ref, children: [
+    count2,
+    suffix2
+  ] });
 }
-const makeUseVisualState = (config2) => (props, isStatic) => {
-  const context = reactExports.useContext(MotionContext);
-  const presenceContext = reactExports.useContext(PresenceContext);
-  const make = () => makeState(config2, props, context, presenceContext);
-  return isStatic ? make() : useConstant(make);
-};
-const useHTMLVisualState = /* @__PURE__ */ makeUseVisualState({
-  scrapeMotionValuesFromProps: scrapeMotionValuesFromProps$1,
-  createRenderState: createHtmlRenderState
-});
-const useSVGVisualState = /* @__PURE__ */ makeUseVisualState({
-  scrapeMotionValuesFromProps,
-  createRenderState: createSvgRenderState
-});
-const motionComponentSymbol = Symbol.for("motionComponentSymbol");
-function useMotionRef(visualState, visualElement, externalRef) {
-  const externalRefContainer = reactExports.useRef(externalRef);
-  reactExports.useInsertionEffect(() => {
-    externalRefContainer.current = externalRef;
-  });
-  const refCleanup = reactExports.useRef(null);
-  return reactExports.useCallback((instance) => {
-    var _a3;
-    if (instance) {
-      (_a3 = visualState.onMount) == null ? void 0 : _a3.call(visualState, instance);
-    }
-    const ref = externalRefContainer.current;
-    if (typeof ref === "function") {
-      if (instance) {
-        const cleanup = ref(instance);
-        if (typeof cleanup === "function") {
-          refCleanup.current = cleanup;
-        }
-      } else if (refCleanup.current) {
-        refCleanup.current();
-        refCleanup.current = null;
-      } else {
-        ref(instance);
-      }
-    } else if (ref) {
-      ref.current = instance;
-    }
-    if (visualElement) {
-      instance ? visualElement.mount(instance) : visualElement.unmount();
-    }
-  }, [visualElement]);
-}
-const SwitchLayoutGroupContext = reactExports.createContext({});
-function isRefObject(ref) {
-  return ref && typeof ref === "object" && Object.prototype.hasOwnProperty.call(ref, "current");
-}
-function useVisualElement(Component2, visualState, props, createVisualElement, ProjectionNodeConstructor, isSVG) {
-  var _a3, _b3;
-  const { visualElement: parent } = reactExports.useContext(MotionContext);
-  const lazyContext = reactExports.useContext(LazyContext);
-  const presenceContext = reactExports.useContext(PresenceContext);
-  const motionConfig = reactExports.useContext(MotionConfigContext);
-  const reducedMotionConfig = motionConfig.reducedMotion;
-  const skipAnimations = motionConfig.skipAnimations;
-  const visualElementRef = reactExports.useRef(null);
-  const hasMountedOnce = reactExports.useRef(false);
-  createVisualElement = createVisualElement || lazyContext.renderer;
-  if (!visualElementRef.current && createVisualElement) {
-    visualElementRef.current = createVisualElement(Component2, {
-      visualState,
-      parent,
-      props,
-      presenceContext,
-      blockInitialAnimation: presenceContext ? presenceContext.initial === false : false,
-      reducedMotionConfig,
-      skipAnimations,
-      isSVG
-    });
-    if (hasMountedOnce.current && visualElementRef.current) {
-      visualElementRef.current.manuallyAnimateOnMount = true;
-    }
-  }
-  const visualElement = visualElementRef.current;
-  const initialLayoutGroupConfig = reactExports.useContext(SwitchLayoutGroupContext);
-  if (visualElement && !visualElement.projection && ProjectionNodeConstructor && (visualElement.type === "html" || visualElement.type === "svg")) {
-    createProjectionNode(visualElementRef.current, props, ProjectionNodeConstructor, initialLayoutGroupConfig);
-  }
-  const isMounted = reactExports.useRef(false);
-  reactExports.useInsertionEffect(() => {
-    if (visualElement && isMounted.current) {
-      visualElement.update(props, presenceContext);
-    }
-  });
-  const optimisedAppearId = props[optimizedAppearDataAttribute];
-  const wantsHandoff = reactExports.useRef(Boolean(optimisedAppearId) && typeof window !== "undefined" && !((_a3 = window.MotionHandoffIsComplete) == null ? void 0 : _a3.call(window, optimisedAppearId)) && ((_b3 = window.MotionHasOptimisedAnimation) == null ? void 0 : _b3.call(window, optimisedAppearId)));
-  useIsomorphicLayoutEffect$1(() => {
-    hasMountedOnce.current = true;
-    if (!visualElement)
-      return;
-    isMounted.current = true;
-    window.MotionIsMounted = true;
-    visualElement.updateFeatures();
-    visualElement.scheduleRenderMicrotask();
-    if (wantsHandoff.current && visualElement.animationState) {
-      visualElement.animationState.animateChanges();
-    }
-  });
+function FeatureCard({ icon, title, desc, delay = 0 }) {
+  const [visible, setVisible] = reactExports.useState(false);
+  const ref = reactExports.useRef(null);
   reactExports.useEffect(() => {
-    if (!visualElement)
-      return;
-    if (!wantsHandoff.current && visualElement.animationState) {
-      visualElement.animationState.animateChanges();
-    }
-    if (wantsHandoff.current) {
-      queueMicrotask(() => {
-        var _a4;
-        (_a4 = window.MotionHandoffMarkAsComplete) == null ? void 0 : _a4.call(window, optimisedAppearId);
-      });
-      wantsHandoff.current = false;
-    }
-    visualElement.enteringChildren = void 0;
-  });
-  return visualElement;
-}
-function createProjectionNode(visualElement, props, ProjectionNodeConstructor, initialPromotionConfig) {
-  const { layoutId, layout: layout2, drag: drag2, dragConstraints, layoutScroll, layoutRoot, layoutAnchor, layoutCrossfade } = props;
-  visualElement.projection = new ProjectionNodeConstructor(visualElement.latestValues, props["data-framer-portal-id"] ? void 0 : getClosestProjectingNode(visualElement.parent));
-  visualElement.projection.setOptions({
-    layoutId,
-    layout: layout2,
-    alwaysMeasureLayout: Boolean(drag2) || dragConstraints && isRefObject(dragConstraints),
-    visualElement,
-    /**
-     * TODO: Update options in an effect. This could be tricky as it'll be too late
-     * to update by the time layout animations run.
-     * We also need to fix this safeToRemove by linking it up to the one returned by usePresence,
-     * ensuring it gets called if there's no potential layout animations.
-     *
-     */
-    animationType: typeof layout2 === "string" ? layout2 : "both",
-    initialPromotionConfig,
-    crossfade: layoutCrossfade,
-    layoutScroll,
-    layoutRoot,
-    layoutAnchor
-  });
-}
-function getClosestProjectingNode(visualElement) {
-  if (!visualElement)
-    return void 0;
-  return visualElement.options.allowProjection !== false ? visualElement.projection : getClosestProjectingNode(visualElement.parent);
-}
-function createMotionComponent(Component2, { forwardMotionProps = false, type } = {}, preloadedFeatures, createVisualElement) {
-  preloadedFeatures && loadFeatures(preloadedFeatures);
-  const isSVG = type ? type === "svg" : isSVGComponent(Component2);
-  const useVisualState = isSVG ? useSVGVisualState : useHTMLVisualState;
-  function MotionDOMComponent(props, externalRef) {
-    let MeasureLayout2;
-    const configAndProps = {
-      ...reactExports.useContext(MotionConfigContext),
-      ...props,
-      layoutId: useLayoutId(props)
-    };
-    const { isStatic } = configAndProps;
-    const context = useCreateMotionContext(props);
-    const visualState = useVisualState(props, isStatic);
-    if (!isStatic && typeof window !== "undefined") {
-      useStrictMode();
-      const layoutProjection = getProjectionFunctionality(configAndProps);
-      MeasureLayout2 = layoutProjection.MeasureLayout;
-      context.visualElement = useVisualElement(Component2, visualState, configAndProps, createVisualElement, layoutProjection.ProjectionNode, isSVG);
-    }
-    return jsxRuntimeExports.jsxs(MotionContext.Provider, { value: context, children: [MeasureLayout2 && context.visualElement ? jsxRuntimeExports.jsx(MeasureLayout2, { visualElement: context.visualElement, ...configAndProps }) : null, useRender(Component2, props, useMotionRef(visualState, context.visualElement, externalRef), visualState, isStatic, forwardMotionProps, isSVG)] });
-  }
-  MotionDOMComponent.displayName = `motion.${typeof Component2 === "string" ? Component2 : `create(${Component2.displayName ?? Component2.name ?? ""})`}`;
-  const ForwardRefMotionComponent = reactExports.forwardRef(MotionDOMComponent);
-  ForwardRefMotionComponent[motionComponentSymbol] = Component2;
-  return ForwardRefMotionComponent;
-}
-function useLayoutId({ layoutId }) {
-  const layoutGroupId = reactExports.useContext(LayoutGroupContext).id;
-  return layoutGroupId && layoutId !== void 0 ? layoutGroupId + "-" + layoutId : layoutId;
-}
-function useStrictMode(configAndProps, preloadedFeatures) {
-  reactExports.useContext(LazyContext).strict;
-}
-function getProjectionFunctionality(props) {
-  const featureDefinitions2 = getInitializedFeatureDefinitions();
-  const { drag: drag2, layout: layout2 } = featureDefinitions2;
-  if (!drag2 && !layout2)
-    return {};
-  const combined = { ...drag2, ...layout2 };
-  return {
-    MeasureLayout: (drag2 == null ? void 0 : drag2.isEnabled(props)) || (layout2 == null ? void 0 : layout2.isEnabled(props)) ? combined.MeasureLayout : void 0,
-    ProjectionNode: combined.ProjectionNode
-  };
-}
-function createMotionProxy(preloadedFeatures, createVisualElement) {
-  if (typeof Proxy === "undefined") {
-    return createMotionComponent;
-  }
-  const componentCache = /* @__PURE__ */ new Map();
-  const factory = (Component2, options) => {
-    return createMotionComponent(Component2, options, preloadedFeatures, createVisualElement);
-  };
-  const deprecatedFactoryFunction = (Component2, options) => {
-    return factory(Component2, options);
-  };
-  return new Proxy(deprecatedFactoryFunction, {
-    /**
-     * Called when `motion` is referenced with a prop: `motion.div`, `motion.input` etc.
-     * The prop name is passed through as `key` and we can use that to generate a `motion`
-     * DOM component with that name.
-     */
-    get: (_target, key) => {
-      if (key === "create")
-        return factory;
-      if (!componentCache.has(key)) {
-        componentCache.set(key, createMotionComponent(key, void 0, preloadedFeatures, createVisualElement));
-      }
-      return componentCache.get(key);
-    }
-  });
-}
-const createDomVisualElement = (Component2, options) => {
-  const isSVG = options.isSVG ?? isSVGComponent(Component2);
-  return isSVG ? new SVGVisualElement(options) : new HTMLVisualElement(options, {
-    allowProjection: Component2 !== reactExports.Fragment
-  });
-};
-class AnimationFeature extends Feature {
-  /**
-   * We dynamically generate the AnimationState manager as it contains a reference
-   * to the underlying animation library. We only want to load that if we load this,
-   * so people can optionally code split it out using the `m` component.
-   */
-  constructor(node) {
-    super(node);
-    node.animationState || (node.animationState = createAnimationState(node));
-  }
-  updateAnimationControlsSubscription() {
-    const { animate } = this.node.getProps();
-    if (isAnimationControls(animate)) {
-      this.unmountControls = animate.subscribe(this.node);
-    }
-  }
-  /**
-   * Subscribe any provided AnimationControls to the component's VisualElement
-   */
-  mount() {
-    this.updateAnimationControlsSubscription();
-  }
-  update() {
-    const { animate } = this.node.getProps();
-    const { animate: prevAnimate } = this.node.prevProps || {};
-    if (animate !== prevAnimate) {
-      this.updateAnimationControlsSubscription();
-    }
-  }
-  unmount() {
-    var _a3;
-    this.node.animationState.reset();
-    (_a3 = this.unmountControls) == null ? void 0 : _a3.call(this);
-  }
-}
-let id = 0;
-class ExitAnimationFeature extends Feature {
-  constructor() {
-    super(...arguments);
-    this.id = id++;
-    this.isExitComplete = false;
-  }
-  update() {
-    var _a3;
-    if (!this.node.presenceContext)
-      return;
-    const { isPresent, onExitComplete } = this.node.presenceContext;
-    const { isPresent: prevIsPresent } = this.node.prevPresenceContext || {};
-    if (!this.node.animationState || isPresent === prevIsPresent) {
-      return;
-    }
-    if (isPresent && prevIsPresent === false) {
-      if (this.isExitComplete) {
-        const { initial, custom } = this.node.getProps();
-        if (typeof initial === "string") {
-          const resolved = resolveVariant(this.node, initial, custom);
-          if (resolved) {
-            const { transition, transitionEnd, ...target } = resolved;
-            for (const key in target) {
-              (_a3 = this.node.getValue(key)) == null ? void 0 : _a3.jump(target[key]);
-            }
-          }
-        }
-        this.node.animationState.reset();
-        this.node.animationState.animateChanges();
-      } else {
-        this.node.animationState.setActive("exit", false);
-      }
-      this.isExitComplete = false;
-      return;
-    }
-    const exitAnimation = this.node.animationState.setActive("exit", !isPresent);
-    if (onExitComplete && !isPresent) {
-      exitAnimation.then(() => {
-        this.isExitComplete = true;
-        onExitComplete(this.id);
-      });
-    }
-  }
-  mount() {
-    const { register, onExitComplete } = this.node.presenceContext || {};
-    if (onExitComplete) {
-      onExitComplete(this.id);
-    }
-    if (register) {
-      this.unmount = register(this.id);
-    }
-  }
-  unmount() {
-  }
-}
-const animations = {
-  animation: {
-    Feature: AnimationFeature
-  },
-  exit: {
-    Feature: ExitAnimationFeature
-  }
-};
-function extractEventInfo(event) {
-  return {
-    point: {
-      x: event.pageX,
-      y: event.pageY
-    }
-  };
-}
-const addPointerInfo = (handler) => (event) => isPrimaryPointer(event) && handler(event, extractEventInfo(event));
-function addPointerEvent(target, eventName, handler, options) {
-  return addDomEvent(target, eventName, addPointerInfo(handler), options);
-}
-const getContextWindow = ({ current }) => {
-  return current ? current.ownerDocument.defaultView : null;
-};
-const distance = (a2, b2) => Math.abs(a2 - b2);
-function distance2D(a2, b2) {
-  const xDelta = distance(a2.x, b2.x);
-  const yDelta = distance(a2.y, b2.y);
-  return Math.sqrt(xDelta ** 2 + yDelta ** 2);
-}
-const overflowStyles = /* @__PURE__ */ new Set(["auto", "scroll"]);
-class PanSession {
-  constructor(event, handlers, { transformPagePoint, contextWindow = window, dragSnapToOrigin = false, distanceThreshold = 3, element } = {}) {
-    this.startEvent = null;
-    this.lastMoveEvent = null;
-    this.lastMoveEventInfo = null;
-    this.lastRawMoveEventInfo = null;
-    this.handlers = {};
-    this.contextWindow = window;
-    this.scrollPositions = /* @__PURE__ */ new Map();
-    this.removeScrollListeners = null;
-    this.onElementScroll = (event2) => {
-      this.handleScroll(event2.target);
-    };
-    this.onWindowScroll = () => {
-      this.handleScroll(window);
-    };
-    this.updatePoint = () => {
-      if (!(this.lastMoveEvent && this.lastMoveEventInfo))
-        return;
-      if (this.lastRawMoveEventInfo) {
-        this.lastMoveEventInfo = transformPoint(this.lastRawMoveEventInfo, this.transformPagePoint);
-      }
-      const info2 = getPanInfo(this.lastMoveEventInfo, this.history);
-      const isPanStarted = this.startEvent !== null;
-      const isDistancePastThreshold = distance2D(info2.offset, { x: 0, y: 0 }) >= this.distanceThreshold;
-      if (!isPanStarted && !isDistancePastThreshold)
-        return;
-      const { point: point3 } = info2;
-      const { timestamp: timestamp2 } = frameData;
-      this.history.push({ ...point3, timestamp: timestamp2 });
-      const { onStart, onMove } = this.handlers;
-      if (!isPanStarted) {
-        onStart && onStart(this.lastMoveEvent, info2);
-        this.startEvent = this.lastMoveEvent;
-      }
-      onMove && onMove(this.lastMoveEvent, info2);
-    };
-    this.handlePointerMove = (event2, info2) => {
-      this.lastMoveEvent = event2;
-      this.lastRawMoveEventInfo = info2;
-      this.lastMoveEventInfo = transformPoint(info2, this.transformPagePoint);
-      frame.update(this.updatePoint, true);
-    };
-    this.handlePointerUp = (event2, info2) => {
-      this.end();
-      const { onEnd, onSessionEnd, resumeAnimation } = this.handlers;
-      if (this.dragSnapToOrigin || !this.startEvent) {
-        resumeAnimation && resumeAnimation();
-      }
-      if (!(this.lastMoveEvent && this.lastMoveEventInfo))
-        return;
-      const panInfo = getPanInfo(event2.type === "pointercancel" ? this.lastMoveEventInfo : transformPoint(info2, this.transformPagePoint), this.history);
-      if (this.startEvent && onEnd) {
-        onEnd(event2, panInfo);
-      }
-      onSessionEnd && onSessionEnd(event2, panInfo);
-    };
-    if (!isPrimaryPointer(event))
-      return;
-    this.dragSnapToOrigin = dragSnapToOrigin;
-    this.handlers = handlers;
-    this.transformPagePoint = transformPagePoint;
-    this.distanceThreshold = distanceThreshold;
-    this.contextWindow = contextWindow || window;
-    const info = extractEventInfo(event);
-    const initialInfo = transformPoint(info, this.transformPagePoint);
-    const { point: point2 } = initialInfo;
-    const { timestamp } = frameData;
-    this.history = [{ ...point2, timestamp }];
-    const { onSessionStart } = handlers;
-    onSessionStart && onSessionStart(event, getPanInfo(initialInfo, this.history));
-    this.removeListeners = pipe(addPointerEvent(this.contextWindow, "pointermove", this.handlePointerMove), addPointerEvent(this.contextWindow, "pointerup", this.handlePointerUp), addPointerEvent(this.contextWindow, "pointercancel", this.handlePointerUp));
-    if (element) {
-      this.startScrollTracking(element);
-    }
-  }
-  /**
-   * Start tracking scroll on ancestors and window.
-   */
-  startScrollTracking(element) {
-    let current = element.parentElement;
-    while (current) {
-      const style2 = getComputedStyle(current);
-      if (overflowStyles.has(style2.overflowX) || overflowStyles.has(style2.overflowY)) {
-        this.scrollPositions.set(current, {
-          x: current.scrollLeft,
-          y: current.scrollTop
-        });
-      }
-      current = current.parentElement;
-    }
-    this.scrollPositions.set(window, {
-      x: window.scrollX,
-      y: window.scrollY
-    });
-    window.addEventListener("scroll", this.onElementScroll, {
-      capture: true
-    });
-    window.addEventListener("scroll", this.onWindowScroll);
-    this.removeScrollListeners = () => {
-      window.removeEventListener("scroll", this.onElementScroll, {
-        capture: true
-      });
-      window.removeEventListener("scroll", this.onWindowScroll);
-    };
-  }
-  /**
-   * Handle scroll compensation during drag.
-   *
-   * For element scroll: adjusts history origin since pageX/pageY doesn't change.
-   * For window scroll: adjusts lastMoveEventInfo since pageX/pageY would change.
-   */
-  handleScroll(target) {
-    const initial = this.scrollPositions.get(target);
-    if (!initial)
-      return;
-    const isWindow = target === window;
-    const current = isWindow ? { x: window.scrollX, y: window.scrollY } : {
-      x: target.scrollLeft,
-      y: target.scrollTop
-    };
-    const delta = { x: current.x - initial.x, y: current.y - initial.y };
-    if (delta.x === 0 && delta.y === 0)
-      return;
-    if (isWindow) {
-      if (this.lastMoveEventInfo) {
-        this.lastMoveEventInfo.point.x += delta.x;
-        this.lastMoveEventInfo.point.y += delta.y;
-      }
-    } else {
-      if (this.history.length > 0) {
-        this.history[0].x -= delta.x;
-        this.history[0].y -= delta.y;
-      }
-    }
-    this.scrollPositions.set(target, current);
-    frame.update(this.updatePoint, true);
-  }
-  updateHandlers(handlers) {
-    this.handlers = handlers;
-  }
-  end() {
-    this.removeListeners && this.removeListeners();
-    this.removeScrollListeners && this.removeScrollListeners();
-    this.scrollPositions.clear();
-    cancelFrame(this.updatePoint);
-  }
-}
-function transformPoint(info, transformPagePoint) {
-  return transformPagePoint ? { point: transformPagePoint(info.point) } : info;
-}
-function subtractPoint(a2, b2) {
-  return { x: a2.x - b2.x, y: a2.y - b2.y };
-}
-function getPanInfo({ point: point2 }, history) {
-  return {
-    point: point2,
-    delta: subtractPoint(point2, lastDevicePoint(history)),
-    offset: subtractPoint(point2, startDevicePoint(history)),
-    velocity: getVelocity(history, 0.1)
-  };
-}
-function startDevicePoint(history) {
-  return history[0];
-}
-function lastDevicePoint(history) {
-  return history[history.length - 1];
-}
-function getVelocity(history, timeDelta) {
-  if (history.length < 2) {
-    return { x: 0, y: 0 };
-  }
-  let i2 = history.length - 1;
-  let timestampedPoint = null;
-  const lastPoint = lastDevicePoint(history);
-  while (i2 >= 0) {
-    timestampedPoint = history[i2];
-    if (lastPoint.timestamp - timestampedPoint.timestamp > /* @__PURE__ */ secondsToMilliseconds(timeDelta)) {
-      break;
-    }
-    i2--;
-  }
-  if (!timestampedPoint) {
-    return { x: 0, y: 0 };
-  }
-  if (timestampedPoint === history[0] && history.length > 2 && lastPoint.timestamp - timestampedPoint.timestamp > /* @__PURE__ */ secondsToMilliseconds(timeDelta) * 2) {
-    timestampedPoint = history[1];
-  }
-  const time2 = /* @__PURE__ */ millisecondsToSeconds(lastPoint.timestamp - timestampedPoint.timestamp);
-  if (time2 === 0) {
-    return { x: 0, y: 0 };
-  }
-  const currentVelocity = {
-    x: (lastPoint.x - timestampedPoint.x) / time2,
-    y: (lastPoint.y - timestampedPoint.y) / time2
-  };
-  if (currentVelocity.x === Infinity) {
-    currentVelocity.x = 0;
-  }
-  if (currentVelocity.y === Infinity) {
-    currentVelocity.y = 0;
-  }
-  return currentVelocity;
-}
-function applyConstraints(point2, { min: min2, max: max2 }, elastic) {
-  if (min2 !== void 0 && point2 < min2) {
-    point2 = elastic ? mixNumber$1(min2, point2, elastic.min) : Math.max(point2, min2);
-  } else if (max2 !== void 0 && point2 > max2) {
-    point2 = elastic ? mixNumber$1(max2, point2, elastic.max) : Math.min(point2, max2);
-  }
-  return point2;
-}
-function calcRelativeAxisConstraints(axis, min2, max2) {
-  return {
-    min: min2 !== void 0 ? axis.min + min2 : void 0,
-    max: max2 !== void 0 ? axis.max + max2 - (axis.max - axis.min) : void 0
-  };
-}
-function calcRelativeConstraints(layoutBox, { top, left, bottom, right }) {
-  return {
-    x: calcRelativeAxisConstraints(layoutBox.x, left, right),
-    y: calcRelativeAxisConstraints(layoutBox.y, top, bottom)
-  };
-}
-function calcViewportAxisConstraints(layoutAxis, constraintsAxis) {
-  let min2 = constraintsAxis.min - layoutAxis.min;
-  let max2 = constraintsAxis.max - layoutAxis.max;
-  if (constraintsAxis.max - constraintsAxis.min < layoutAxis.max - layoutAxis.min) {
-    [min2, max2] = [max2, min2];
-  }
-  return { min: min2, max: max2 };
-}
-function calcViewportConstraints(layoutBox, constraintsBox) {
-  return {
-    x: calcViewportAxisConstraints(layoutBox.x, constraintsBox.x),
-    y: calcViewportAxisConstraints(layoutBox.y, constraintsBox.y)
-  };
-}
-function calcOrigin(source, target) {
-  let origin = 0.5;
-  const sourceLength = calcLength(source);
-  const targetLength = calcLength(target);
-  if (targetLength > sourceLength) {
-    origin = /* @__PURE__ */ progress(target.min, target.max - sourceLength, source.min);
-  } else if (sourceLength > targetLength) {
-    origin = /* @__PURE__ */ progress(source.min, source.max - targetLength, target.min);
-  }
-  return clamp(0, 1, origin);
-}
-function rebaseAxisConstraints(layout2, constraints) {
-  const relativeConstraints = {};
-  if (constraints.min !== void 0) {
-    relativeConstraints.min = constraints.min - layout2.min;
-  }
-  if (constraints.max !== void 0) {
-    relativeConstraints.max = constraints.max - layout2.min;
-  }
-  return relativeConstraints;
-}
-const defaultElastic = 0.35;
-function resolveDragElastic(dragElastic = defaultElastic) {
-  if (dragElastic === false) {
-    dragElastic = 0;
-  } else if (dragElastic === true) {
-    dragElastic = defaultElastic;
-  }
-  return {
-    x: resolveAxisElastic(dragElastic, "left", "right"),
-    y: resolveAxisElastic(dragElastic, "top", "bottom")
-  };
-}
-function resolveAxisElastic(dragElastic, minLabel, maxLabel) {
-  return {
-    min: resolvePointElastic(dragElastic, minLabel),
-    max: resolvePointElastic(dragElastic, maxLabel)
-  };
-}
-function resolvePointElastic(dragElastic, label) {
-  return typeof dragElastic === "number" ? dragElastic : dragElastic[label] || 0;
-}
-const elementDragControls = /* @__PURE__ */ new WeakMap();
-class VisualElementDragControls {
-  constructor(visualElement) {
-    this.openDragLock = null;
-    this.isDragging = false;
-    this.currentDirection = null;
-    this.originPoint = { x: 0, y: 0 };
-    this.constraints = false;
-    this.hasMutatedConstraints = false;
-    this.elastic = createBox();
-    this.latestPointerEvent = null;
-    this.latestPanInfo = null;
-    this.visualElement = visualElement;
-  }
-  start(originEvent, { snapToCursor = false, distanceThreshold } = {}) {
-    const { presenceContext } = this.visualElement;
-    if (presenceContext && presenceContext.isPresent === false)
-      return;
-    const onSessionStart = (event) => {
-      if (snapToCursor) {
-        this.snapToCursor(extractEventInfo(event).point);
-      }
-      this.stopAnimation();
-    };
-    const onStart = (event, info) => {
-      const { drag: drag2, dragPropagation, onDragStart } = this.getProps();
-      if (drag2 && !dragPropagation) {
-        if (this.openDragLock)
-          this.openDragLock();
-        this.openDragLock = setDragLock(drag2);
-        if (!this.openDragLock)
-          return;
-      }
-      this.latestPointerEvent = event;
-      this.latestPanInfo = info;
-      this.isDragging = true;
-      this.currentDirection = null;
-      this.resolveConstraints();
-      if (this.visualElement.projection) {
-        this.visualElement.projection.isAnimationBlocked = true;
-        this.visualElement.projection.target = void 0;
-      }
-      eachAxis((axis) => {
-        let current = this.getAxisMotionValue(axis).get() || 0;
-        if (percent.test(current)) {
-          const { projection } = this.visualElement;
-          if (projection && projection.layout) {
-            const measuredAxis = projection.layout.layoutBox[axis];
-            if (measuredAxis) {
-              const length = calcLength(measuredAxis);
-              current = length * (parseFloat(current) / 100);
-            }
-          }
-        }
-        this.originPoint[axis] = current;
-      });
-      if (onDragStart) {
-        frame.update(() => onDragStart(event, info), false, true);
-      }
-      addValueToWillChange(this.visualElement, "transform");
-      const { animationState } = this.visualElement;
-      animationState && animationState.setActive("whileDrag", true);
-    };
-    const onMove = (event, info) => {
-      this.latestPointerEvent = event;
-      this.latestPanInfo = info;
-      const { dragPropagation, dragDirectionLock, onDirectionLock, onDrag } = this.getProps();
-      if (!dragPropagation && !this.openDragLock)
-        return;
-      const { offset } = info;
-      if (dragDirectionLock && this.currentDirection === null) {
-        this.currentDirection = getCurrentDirection(offset);
-        if (this.currentDirection !== null) {
-          onDirectionLock && onDirectionLock(this.currentDirection);
-        }
-        return;
-      }
-      this.updateAxis("x", info.point, offset);
-      this.updateAxis("y", info.point, offset);
-      this.visualElement.render();
-      if (onDrag) {
-        frame.update(() => onDrag(event, info), false, true);
-      }
-    };
-    const onSessionEnd = (event, info) => {
-      this.latestPointerEvent = event;
-      this.latestPanInfo = info;
-      this.stop(event, info);
-      this.latestPointerEvent = null;
-      this.latestPanInfo = null;
-    };
-    const resumeAnimation = () => {
-      const { dragSnapToOrigin: snap } = this.getProps();
-      if (snap || this.constraints) {
-        this.startAnimation({ x: 0, y: 0 });
-      }
-    };
-    const { dragSnapToOrigin } = this.getProps();
-    this.panSession = new PanSession(originEvent, {
-      onSessionStart,
-      onStart,
-      onMove,
-      onSessionEnd,
-      resumeAnimation
-    }, {
-      transformPagePoint: this.visualElement.getTransformPagePoint(),
-      dragSnapToOrigin,
-      distanceThreshold,
-      contextWindow: getContextWindow(this.visualElement),
-      element: this.visualElement.current
-    });
-  }
-  /**
-   * @internal
-   */
-  stop(event, panInfo) {
-    const finalEvent = event || this.latestPointerEvent;
-    const finalPanInfo = panInfo || this.latestPanInfo;
-    const isDragging2 = this.isDragging;
-    this.cancel();
-    if (!isDragging2 || !finalPanInfo || !finalEvent)
-      return;
-    const { velocity } = finalPanInfo;
-    this.startAnimation(velocity);
-    const { onDragEnd } = this.getProps();
-    if (onDragEnd) {
-      frame.postRender(() => onDragEnd(finalEvent, finalPanInfo));
-    }
-  }
-  /**
-   * @internal
-   */
-  cancel() {
-    this.isDragging = false;
-    const { projection, animationState } = this.visualElement;
-    if (projection) {
-      projection.isAnimationBlocked = false;
-    }
-    this.endPanSession();
-    const { dragPropagation } = this.getProps();
-    if (!dragPropagation && this.openDragLock) {
-      this.openDragLock();
-      this.openDragLock = null;
-    }
-    animationState && animationState.setActive("whileDrag", false);
-  }
-  /**
-   * Clean up the pan session without modifying other drag state.
-   * This is used during unmount to ensure event listeners are removed
-   * without affecting projection animations or drag locks.
-   * @internal
-   */
-  endPanSession() {
-    this.panSession && this.panSession.end();
-    this.panSession = void 0;
-  }
-  updateAxis(axis, _point, offset) {
-    const { drag: drag2 } = this.getProps();
-    if (!offset || !shouldDrag(axis, drag2, this.currentDirection))
-      return;
-    const axisValue = this.getAxisMotionValue(axis);
-    let next = this.originPoint[axis] + offset[axis];
-    if (this.constraints && this.constraints[axis]) {
-      next = applyConstraints(next, this.constraints[axis], this.elastic[axis]);
-    }
-    axisValue.set(next);
-  }
-  resolveConstraints() {
-    var _a3;
-    const { dragConstraints, dragElastic } = this.getProps();
-    const layout2 = this.visualElement.projection && !this.visualElement.projection.layout ? this.visualElement.projection.measure(false) : (_a3 = this.visualElement.projection) == null ? void 0 : _a3.layout;
-    const prevConstraints = this.constraints;
-    if (dragConstraints && isRefObject(dragConstraints)) {
-      if (!this.constraints) {
-        this.constraints = this.resolveRefConstraints();
-      }
-    } else {
-      if (dragConstraints && layout2) {
-        this.constraints = calcRelativeConstraints(layout2.layoutBox, dragConstraints);
-      } else {
-        this.constraints = false;
-      }
-    }
-    this.elastic = resolveDragElastic(dragElastic);
-    if (prevConstraints !== this.constraints && !isRefObject(dragConstraints) && layout2 && this.constraints && !this.hasMutatedConstraints) {
-      eachAxis((axis) => {
-        if (this.constraints !== false && this.getAxisMotionValue(axis)) {
-          this.constraints[axis] = rebaseAxisConstraints(layout2.layoutBox[axis], this.constraints[axis]);
-        }
-      });
-    }
-  }
-  resolveRefConstraints() {
-    const { dragConstraints: constraints, onMeasureDragConstraints } = this.getProps();
-    if (!constraints || !isRefObject(constraints))
-      return false;
-    const constraintsElement = constraints.current;
-    const { projection } = this.visualElement;
-    if (!projection || !projection.layout)
-      return false;
-    const constraintsBox = measurePageBox(constraintsElement, projection.root, this.visualElement.getTransformPagePoint());
-    let measuredConstraints = calcViewportConstraints(projection.layout.layoutBox, constraintsBox);
-    if (onMeasureDragConstraints) {
-      const userConstraints = onMeasureDragConstraints(convertBoxToBoundingBox(measuredConstraints));
-      this.hasMutatedConstraints = !!userConstraints;
-      if (userConstraints) {
-        measuredConstraints = convertBoundingBoxToBox(userConstraints);
-      }
-    }
-    return measuredConstraints;
-  }
-  startAnimation(velocity) {
-    const { drag: drag2, dragMomentum, dragElastic, dragTransition, dragSnapToOrigin, onDragTransitionEnd } = this.getProps();
-    const constraints = this.constraints || {};
-    const momentumAnimations = eachAxis((axis) => {
-      if (!shouldDrag(axis, drag2, this.currentDirection)) {
-        return;
-      }
-      let transition = constraints && constraints[axis] || {};
-      if (dragSnapToOrigin === true || dragSnapToOrigin === axis)
-        transition = { min: 0, max: 0 };
-      const bounceStiffness = dragElastic ? 200 : 1e6;
-      const bounceDamping = dragElastic ? 40 : 1e7;
-      const inertia2 = {
-        type: "inertia",
-        velocity: dragMomentum ? velocity[axis] : 0,
-        bounceStiffness,
-        bounceDamping,
-        timeConstant: 750,
-        restDelta: 1,
-        restSpeed: 10,
-        ...dragTransition,
-        ...transition
-      };
-      return this.startAxisValueAnimation(axis, inertia2);
-    });
-    return Promise.all(momentumAnimations).then(onDragTransitionEnd);
-  }
-  startAxisValueAnimation(axis, transition) {
-    const axisValue = this.getAxisMotionValue(axis);
-    addValueToWillChange(this.visualElement, axis);
-    return axisValue.start(animateMotionValue(axis, axisValue, 0, transition, this.visualElement, false));
-  }
-  stopAnimation() {
-    eachAxis((axis) => this.getAxisMotionValue(axis).stop());
-  }
-  /**
-   * Drag works differently depending on which props are provided.
-   *
-   * - If _dragX and _dragY are provided, we output the gesture delta directly to those motion values.
-   * - Otherwise, we apply the delta to the x/y motion values.
-   */
-  getAxisMotionValue(axis) {
-    const dragKey = `_drag${axis.toUpperCase()}`;
-    const props = this.visualElement.getProps();
-    const externalMotionValue = props[dragKey];
-    return externalMotionValue ? externalMotionValue : this.visualElement.getValue(axis, (props.initial ? props.initial[axis] : void 0) || 0);
-  }
-  snapToCursor(point2) {
-    eachAxis((axis) => {
-      const { drag: drag2 } = this.getProps();
-      if (!shouldDrag(axis, drag2, this.currentDirection))
-        return;
-      const { projection } = this.visualElement;
-      const axisValue = this.getAxisMotionValue(axis);
-      if (projection && projection.layout) {
-        const { min: min2, max: max2 } = projection.layout.layoutBox[axis];
-        const current = axisValue.get() || 0;
-        axisValue.set(point2[axis] - mixNumber$1(min2, max2, 0.5) + current);
-      }
-    });
-  }
-  /**
-   * When the viewport resizes we want to check if the measured constraints
-   * have changed and, if so, reposition the element within those new constraints
-   * relative to where it was before the resize.
-   */
-  scalePositionWithinConstraints() {
-    if (!this.visualElement.current)
-      return;
-    const { drag: drag2, dragConstraints } = this.getProps();
-    const { projection } = this.visualElement;
-    if (!isRefObject(dragConstraints) || !projection || !this.constraints)
-      return;
-    this.stopAnimation();
-    const boxProgress = { x: 0, y: 0 };
-    eachAxis((axis) => {
-      const axisValue = this.getAxisMotionValue(axis);
-      if (axisValue && this.constraints !== false) {
-        const latest = axisValue.get();
-        boxProgress[axis] = calcOrigin({ min: latest, max: latest }, this.constraints[axis]);
-      }
-    });
-    const { transformTemplate } = this.visualElement.getProps();
-    this.visualElement.current.style.transform = transformTemplate ? transformTemplate({}, "") : "none";
-    projection.root && projection.root.updateScroll();
-    projection.updateLayout();
-    this.constraints = false;
-    this.resolveConstraints();
-    eachAxis((axis) => {
-      if (!shouldDrag(axis, drag2, null))
-        return;
-      const axisValue = this.getAxisMotionValue(axis);
-      const { min: min2, max: max2 } = this.constraints[axis];
-      axisValue.set(mixNumber$1(min2, max2, boxProgress[axis]));
-    });
-    this.visualElement.render();
-  }
-  addListeners() {
-    if (!this.visualElement.current)
-      return;
-    elementDragControls.set(this.visualElement, this);
-    const element = this.visualElement.current;
-    const stopPointerListener = addPointerEvent(element, "pointerdown", (event) => {
-      const { drag: drag2, dragListener = true } = this.getProps();
-      const target = event.target;
-      const isClickingTextInputChild = target !== element && isElementTextInput(target);
-      if (drag2 && dragListener && !isClickingTextInputChild) {
-        this.start(event);
-      }
-    });
-    let stopResizeObservers;
-    const measureDragConstraints = () => {
-      const { dragConstraints } = this.getProps();
-      if (isRefObject(dragConstraints) && dragConstraints.current) {
-        this.constraints = this.resolveRefConstraints();
-        if (!stopResizeObservers) {
-          stopResizeObservers = startResizeObservers(element, dragConstraints.current, () => this.scalePositionWithinConstraints());
-        }
-      }
-    };
-    const { projection } = this.visualElement;
-    const stopMeasureLayoutListener = projection.addEventListener("measure", measureDragConstraints);
-    if (projection && !projection.layout) {
-      projection.root && projection.root.updateScroll();
-      projection.updateLayout();
-    }
-    frame.read(measureDragConstraints);
-    const stopResizeListener = addDomEvent(window, "resize", () => this.scalePositionWithinConstraints());
-    const stopLayoutUpdateListener = projection.addEventListener("didUpdate", ({ delta, hasLayoutChanged }) => {
-      if (this.isDragging && hasLayoutChanged) {
-        eachAxis((axis) => {
-          const motionValue2 = this.getAxisMotionValue(axis);
-          if (!motionValue2)
-            return;
-          this.originPoint[axis] += delta[axis].translate;
-          motionValue2.set(motionValue2.get() + delta[axis].translate);
-        });
-        this.visualElement.render();
-      }
-    });
-    return () => {
-      stopResizeListener();
-      stopPointerListener();
-      stopMeasureLayoutListener();
-      stopLayoutUpdateListener && stopLayoutUpdateListener();
-      stopResizeObservers && stopResizeObservers();
-    };
-  }
-  getProps() {
-    const props = this.visualElement.getProps();
-    const { drag: drag2 = false, dragDirectionLock = false, dragPropagation = false, dragConstraints = false, dragElastic = defaultElastic, dragMomentum = true } = props;
-    return {
-      ...props,
-      drag: drag2,
-      dragDirectionLock,
-      dragPropagation,
-      dragConstraints,
-      dragElastic,
-      dragMomentum
-    };
-  }
-}
-function skipFirstCall(callback) {
-  let isFirst = true;
-  return () => {
-    if (isFirst) {
-      isFirst = false;
-      return;
-    }
-    callback();
-  };
-}
-function startResizeObservers(element, constraintsElement, onResize) {
-  const stopElement = resize(element, skipFirstCall(onResize));
-  const stopContainer = resize(constraintsElement, skipFirstCall(onResize));
-  return () => {
-    stopElement();
-    stopContainer();
-  };
-}
-function shouldDrag(direction, drag2, currentDirection) {
-  return (drag2 === true || drag2 === direction) && (currentDirection === null || currentDirection === direction);
-}
-function getCurrentDirection(offset, lockThreshold = 10) {
-  let direction = null;
-  if (Math.abs(offset.y) > lockThreshold) {
-    direction = "y";
-  } else if (Math.abs(offset.x) > lockThreshold) {
-    direction = "x";
-  }
-  return direction;
-}
-class DragGesture extends Feature {
-  constructor(node) {
-    super(node);
-    this.removeGroupControls = noop;
-    this.removeListeners = noop;
-    this.controls = new VisualElementDragControls(node);
-  }
-  mount() {
-    const { dragControls } = this.node.getProps();
-    if (dragControls) {
-      this.removeGroupControls = dragControls.subscribe(this.controls);
-    }
-    this.removeListeners = this.controls.addListeners() || noop;
-  }
-  update() {
-    const { dragControls } = this.node.getProps();
-    const { dragControls: prevDragControls } = this.node.prevProps || {};
-    if (dragControls !== prevDragControls) {
-      this.removeGroupControls();
-      if (dragControls) {
-        this.removeGroupControls = dragControls.subscribe(this.controls);
-      }
-    }
-  }
-  unmount() {
-    this.removeGroupControls();
-    this.removeListeners();
-    if (!this.controls.isDragging) {
-      this.controls.endPanSession();
-    }
-  }
-}
-const asyncHandler = (handler) => (event, info) => {
-  if (handler) {
-    frame.update(() => handler(event, info), false, true);
-  }
-};
-class PanGesture extends Feature {
-  constructor() {
-    super(...arguments);
-    this.removePointerDownListener = noop;
-  }
-  onPointerDown(pointerDownEvent) {
-    this.session = new PanSession(pointerDownEvent, this.createPanHandlers(), {
-      transformPagePoint: this.node.getTransformPagePoint(),
-      contextWindow: getContextWindow(this.node)
-    });
-  }
-  createPanHandlers() {
-    const { onPanSessionStart, onPanStart, onPan, onPanEnd } = this.node.getProps();
-    return {
-      onSessionStart: asyncHandler(onPanSessionStart),
-      onStart: asyncHandler(onPanStart),
-      onMove: asyncHandler(onPan),
-      onEnd: (event, info) => {
-        delete this.session;
-        if (onPanEnd) {
-          frame.postRender(() => onPanEnd(event, info));
-        }
-      }
-    };
-  }
-  mount() {
-    this.removePointerDownListener = addPointerEvent(this.node.current, "pointerdown", (event) => this.onPointerDown(event));
-  }
-  update() {
-    this.session && this.session.updateHandlers(this.createPanHandlers());
-  }
-  unmount() {
-    this.removePointerDownListener();
-    this.session && this.session.end();
-  }
-}
-let hasTakenAnySnapshot = false;
-class MeasureLayoutWithContext extends reactExports.Component {
-  /**
-   * This only mounts projection nodes for components that
-   * need measuring, we might want to do it for all components
-   * in order to incorporate transforms
-   */
-  componentDidMount() {
-    const { visualElement, layoutGroup, switchLayoutGroup, layoutId } = this.props;
-    const { projection } = visualElement;
-    if (projection) {
-      if (layoutGroup.group)
-        layoutGroup.group.add(projection);
-      if (switchLayoutGroup && switchLayoutGroup.register && layoutId) {
-        switchLayoutGroup.register(projection);
-      }
-      if (hasTakenAnySnapshot) {
-        projection.root.didUpdate();
-      }
-      projection.addEventListener("animationComplete", () => {
-        this.safeToRemove();
-      });
-      projection.setOptions({
-        ...projection.options,
-        layoutDependency: this.props.layoutDependency,
-        onExitComplete: () => this.safeToRemove()
-      });
-    }
-    globalProjectionState.hasEverUpdated = true;
-  }
-  getSnapshotBeforeUpdate(prevProps) {
-    const { layoutDependency, visualElement, drag: drag2, isPresent } = this.props;
-    const { projection } = visualElement;
-    if (!projection)
-      return null;
-    projection.isPresent = isPresent;
-    if (prevProps.layoutDependency !== layoutDependency) {
-      projection.setOptions({
-        ...projection.options,
-        layoutDependency
-      });
-    }
-    hasTakenAnySnapshot = true;
-    if (drag2 || prevProps.layoutDependency !== layoutDependency || layoutDependency === void 0 || prevProps.isPresent !== isPresent) {
-      projection.willUpdate();
-    } else {
-      this.safeToRemove();
-    }
-    if (prevProps.isPresent !== isPresent) {
-      if (isPresent) {
-        projection.promote();
-      } else if (!projection.relegate()) {
-        frame.postRender(() => {
-          const stack = projection.getStack();
-          if (!stack || !stack.members.length) {
-            this.safeToRemove();
-          }
-        });
-      }
-    }
-    return null;
-  }
-  componentDidUpdate() {
-    const { visualElement, layoutAnchor } = this.props;
-    const { projection } = visualElement;
-    if (projection) {
-      projection.options.layoutAnchor = layoutAnchor;
-      projection.root.didUpdate();
-      microtask.postRender(() => {
-        if (!projection.currentAnimation && projection.isLead()) {
-          this.safeToRemove();
-        }
-      });
-    }
-  }
-  componentWillUnmount() {
-    const { visualElement, layoutGroup, switchLayoutGroup: promoteContext } = this.props;
-    const { projection } = visualElement;
-    hasTakenAnySnapshot = true;
-    if (projection) {
-      projection.scheduleCheckAfterUnmount();
-      if (layoutGroup && layoutGroup.group)
-        layoutGroup.group.remove(projection);
-      if (promoteContext && promoteContext.deregister)
-        promoteContext.deregister(projection);
-    }
-  }
-  safeToRemove() {
-    const { safeToRemove } = this.props;
-    safeToRemove && safeToRemove();
-  }
-  render() {
-    return null;
-  }
-}
-function MeasureLayout(props) {
-  const [isPresent, safeToRemove] = usePresence();
-  const layoutGroup = reactExports.useContext(LayoutGroupContext);
-  return jsxRuntimeExports.jsx(MeasureLayoutWithContext, { ...props, layoutGroup, switchLayoutGroup: reactExports.useContext(SwitchLayoutGroupContext), isPresent, safeToRemove });
-}
-const drag = {
-  pan: {
-    Feature: PanGesture
-  },
-  drag: {
-    Feature: DragGesture,
-    ProjectionNode: HTMLProjectionNode,
-    MeasureLayout
-  }
-};
-function handleHoverEvent(node, event, lifecycle) {
-  const { props } = node;
-  if (node.animationState && props.whileHover) {
-    node.animationState.setActive("whileHover", lifecycle === "Start");
-  }
-  const eventName = "onHover" + lifecycle;
-  const callback = props[eventName];
-  if (callback) {
-    frame.postRender(() => callback(event, extractEventInfo(event)));
-  }
-}
-class HoverGesture extends Feature {
-  mount() {
-    const { current } = this.node;
-    if (!current)
-      return;
-    this.unmount = hover(current, (_element, startEvent) => {
-      handleHoverEvent(this.node, startEvent, "Start");
-      return (endEvent) => handleHoverEvent(this.node, endEvent, "End");
-    });
-  }
-  unmount() {
-  }
-}
-class FocusGesture extends Feature {
-  constructor() {
-    super(...arguments);
-    this.isActive = false;
-  }
-  onFocus() {
-    let isFocusVisible = false;
-    try {
-      isFocusVisible = this.node.current.matches(":focus-visible");
-    } catch (e3) {
-      isFocusVisible = true;
-    }
-    if (!isFocusVisible || !this.node.animationState)
-      return;
-    this.node.animationState.setActive("whileFocus", true);
-    this.isActive = true;
-  }
-  onBlur() {
-    if (!this.isActive || !this.node.animationState)
-      return;
-    this.node.animationState.setActive("whileFocus", false);
-    this.isActive = false;
-  }
-  mount() {
-    this.unmount = pipe(addDomEvent(this.node.current, "focus", () => this.onFocus()), addDomEvent(this.node.current, "blur", () => this.onBlur()));
-  }
-  unmount() {
-  }
-}
-function handlePressEvent(node, event, lifecycle) {
-  const { props } = node;
-  if (node.current instanceof HTMLButtonElement && node.current.disabled) {
-    return;
-  }
-  if (node.animationState && props.whileTap) {
-    node.animationState.setActive("whileTap", lifecycle === "Start");
-  }
-  const eventName = "onTap" + (lifecycle === "End" ? "" : lifecycle);
-  const callback = props[eventName];
-  if (callback) {
-    frame.postRender(() => callback(event, extractEventInfo(event)));
-  }
-}
-class PressGesture extends Feature {
-  mount() {
-    const { current } = this.node;
-    if (!current)
-      return;
-    const { globalTapTarget, propagate } = this.node.props;
-    this.unmount = press(current, (_element, startEvent) => {
-      handlePressEvent(this.node, startEvent, "Start");
-      return (endEvent, { success }) => handlePressEvent(this.node, endEvent, success ? "End" : "Cancel");
-    }, {
-      useGlobalTarget: globalTapTarget,
-      stopPropagation: (propagate == null ? void 0 : propagate.tap) === false
-    });
-  }
-  unmount() {
-  }
-}
-const observerCallbacks = /* @__PURE__ */ new WeakMap();
-const observers = /* @__PURE__ */ new WeakMap();
-const fireObserverCallback = (entry) => {
-  const callback = observerCallbacks.get(entry.target);
-  callback && callback(entry);
-};
-const fireAllObserverCallbacks = (entries) => {
-  entries.forEach(fireObserverCallback);
-};
-function initIntersectionObserver({ root: root2, ...options }) {
-  const lookupRoot = root2 || document;
-  if (!observers.has(lookupRoot)) {
-    observers.set(lookupRoot, {});
-  }
-  const rootObservers = observers.get(lookupRoot);
-  const key = JSON.stringify(options);
-  if (!rootObservers[key]) {
-    rootObservers[key] = new IntersectionObserver(fireAllObserverCallbacks, { root: root2, ...options });
-  }
-  return rootObservers[key];
-}
-function observeIntersection(element, options, callback) {
-  const rootInteresectionObserver = initIntersectionObserver(options);
-  observerCallbacks.set(element, callback);
-  rootInteresectionObserver.observe(element);
-  return () => {
-    observerCallbacks.delete(element);
-    rootInteresectionObserver.unobserve(element);
-  };
-}
-const thresholdNames = {
-  some: 0,
-  all: 1
-};
-class InViewFeature extends Feature {
-  constructor() {
-    super(...arguments);
-    this.hasEnteredView = false;
-    this.isInView = false;
-  }
-  startObserver() {
-    var _a3;
-    (_a3 = this.stopObserver) == null ? void 0 : _a3.call(this);
-    const { viewport = {} } = this.node.getProps();
-    const { root: root2, margin: rootMargin, amount = "some", once: once2 } = viewport;
-    const options = {
-      root: root2 ? root2.current : void 0,
-      rootMargin,
-      threshold: typeof amount === "number" ? amount : thresholdNames[amount]
-    };
-    const onIntersectionUpdate = (entry) => {
-      const { isIntersecting } = entry;
-      if (this.isInView === isIntersecting)
-        return;
-      this.isInView = isIntersecting;
-      if (once2 && !isIntersecting && this.hasEnteredView) {
-        return;
-      } else if (isIntersecting) {
-        this.hasEnteredView = true;
-      }
-      if (this.node.animationState) {
-        this.node.animationState.setActive("whileInView", isIntersecting);
-      }
-      const { onViewportEnter, onViewportLeave } = this.node.getProps();
-      const callback = isIntersecting ? onViewportEnter : onViewportLeave;
-      callback && callback(entry);
-    };
-    this.stopObserver = observeIntersection(this.node.current, options, onIntersectionUpdate);
-  }
-  mount() {
-    this.startObserver();
-  }
-  update() {
-    if (typeof IntersectionObserver === "undefined")
-      return;
-    const { props, prevProps } = this.node;
-    const hasOptionsChanged = ["amount", "margin", "root"].some(hasViewportOptionChanged(props, prevProps));
-    if (hasOptionsChanged) {
-      this.startObserver();
-    }
-  }
-  unmount() {
-    var _a3;
-    (_a3 = this.stopObserver) == null ? void 0 : _a3.call(this);
-    this.hasEnteredView = false;
-    this.isInView = false;
-  }
-}
-function hasViewportOptionChanged({ viewport = {} }, { viewport: prevViewport = {} } = {}) {
-  return (name) => viewport[name] !== prevViewport[name];
-}
-const gestureAnimations = {
-  inView: {
-    Feature: InViewFeature
-  },
-  tap: {
-    Feature: PressGesture
-  },
-  focus: {
-    Feature: FocusGesture
-  },
-  hover: {
-    Feature: HoverGesture
-  }
-};
-const layout = {
-  layout: {
-    ProjectionNode: HTMLProjectionNode,
-    MeasureLayout
-  }
-};
-const featureBundle = {
-  ...animations,
-  ...gestureAnimations,
-  ...drag,
-  ...layout
-};
-const motion = /* @__PURE__ */ createMotionProxy(featureBundle, createDomVisualElement);
-const STATS = [
-  { label: "প্রতিষ্ঠিত", value: "১৯৭৯", icon: Calendar },
-  { label: "জেলা", value: "খুলনা", icon: Building2 },
-  { label: "সদস্য পদ", value: "সক্রিয়", icon: Users }
-];
-const FEATURES = [
-  {
-    icon: Users,
-    title: "সদস্য ব্যবস্থাপনা",
-    subtitle: "Member Management",
-    desc: "সহজেই সদস্য নিবন্ধন করুন, পদ অনুযায়ী কমিটি দেখুন এবং ডিজিটাল সদস্য পত্র ডাউনলোড করুন।"
-  },
-  {
-    icon: MessageSquare,
-    title: "গ্রুপ চ্যাট",
-    subtitle: "Group Chat",
-    desc: "সকল নিবন্ধিত সদস্যদের জন্য রিয়েল-টাইম মেসেজিং সিস্টেম — মতামত ও সংবাদ শেয়ার করুন।"
-  },
-  {
-    icon: BookOpen,
-    title: "নোটিশ বোর্ড",
-    subtitle: "Notice Board",
-    desc: "সর্বশেষ নোটিশ, ঘোষণা ও কর্মসূচি এক জায়গায় পান। কখনো কোনো গুরুত্বপূর্ণ তথ্য মিস করবেন না।"
-  },
-  {
-    icon: Shield,
-    title: "নিরাপদ পোর্টাল",
-    subtitle: "Secure Portal",
-    desc: "প্রশাসনিক নিয়ন্ত্রণ সহ সম্পূর্ণ নিরাপদ প্ল্যাটফর্ম — শুধুমাত্র অনুমোদিত সদস্যদের জন্য।"
-  }
-];
-function LandingPage() {
-  const scrollToAbout = () => {
-    var _a3;
-    (_a3 = document.getElementById("about")) == null ? void 0 : _a3.scrollIntoView({ behavior: "smooth" });
-  };
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) setVisible(true);
+      },
+      { threshold: 0.15 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
     {
-      className: "min-h-screen flex flex-col",
-      style: { fontFamily: "var(--font-body)" },
+      ref,
+      style: {
+        opacity: visible ? 1 : 0,
+        transform: visible ? "translateY(0)" : "translateY(30px)",
+        transition: `opacity 0.6s ease ${delay}ms, transform 0.6s ease ${delay}ms`
+      },
+      className: "bg-white rounded-2xl p-6 border-t-4 border-green-700 shadow-md hover:shadow-xl group hover:scale-105 transition-transform duration-300",
       children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "header",
-          {
-            className: "sticky top-0 z-50 border-b shadow-lg",
-            style: { background: "#006A4E" },
-            children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "max-w-screen-xl mx-auto px-4 h-16 flex items-center gap-3", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mb-4 group-hover:bg-green-700 transition-colors duration-300", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-green-700 group-hover:text-white transition-colors duration-300", children: icon }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-lg font-bold text-gray-900 mb-2", children: title }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-gray-600 text-sm leading-relaxed", children: desc })
+      ]
+    }
+  );
+}
+function ReasonCard({ icon, title, desc, delay = 0 }) {
+  const [visible, setVisible] = reactExports.useState(false);
+  const ref = reactExports.useRef(null);
+  reactExports.useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) setVisible(true);
+      },
+      { threshold: 0.15 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "div",
+    {
+      ref,
+      style: {
+        opacity: visible ? 1 : 0,
+        transform: visible ? "translateX(0)" : "translateX(-20px)",
+        transition: `opacity 0.6s ease ${delay}ms, transform 0.6s ease ${delay}ms`
+      },
+      className: "flex items-start gap-4 bg-white rounded-2xl p-6 shadow-md hover:shadow-lg transition-shadow duration-300",
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-12 h-12 rounded-full bg-red-50 border-2 border-red-200 flex items-center justify-center flex-shrink-0", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-red-600", children: icon }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-base font-bold text-gray-900 mb-1", children: title }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-gray-600 text-sm leading-relaxed", children: desc })
+        ] })
+      ]
+    }
+  );
+}
+const particles = Array.from({ length: 15 }, (_2, i2) => ({
+  id: i2,
+  width: i2 * 1.7 % 6 + 3,
+  height: i2 * 1.3 % 6 + 3,
+  color: i2 % 3 === 0 ? "#DC143C" : i2 % 3 === 1 ? "#FFD700" : "rgba(255,255,255,0.6)",
+  left: i2 * 6.67 % 100,
+  duration: i2 * 0.7 % 10 + 10,
+  delay: i2 * 0.33 % 5
+}));
+function LandingPage() {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-h-screen", style: { fontFamily: "var(--font-body)" }, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("style", { children: cssAnimations }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "section",
+      {
+        "data-ocid": "landing.hero",
+        className: "relative min-h-screen flex flex-col items-center justify-center overflow-hidden",
+        style: {
+          background: "linear-gradient(135deg, #003820 0%, #006A4E 30%, #004d38 60%, #0d1117 100%)"
+        },
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "div",
+            {
+              className: "absolute inset-0 opacity-10",
+              style: {
+                backgroundImage: "repeating-linear-gradient(45deg, #DC143C 0px, #DC143C 2px, transparent 2px, transparent 40px)"
+              }
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 overflow-hidden pointer-events-none", children: particles.map((p2) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "div",
+            {
+              style: {
+                position: "absolute",
+                width: `${p2.width}px`,
+                height: `${p2.height}px`,
+                background: p2.color,
+                borderRadius: "50%",
+                left: `${p2.left}%`,
+                bottom: "0",
+                animation: `particleFloat ${p2.duration}s linear ${p2.delay}s infinite`
+              }
+            },
+            p2.id
+          )) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "absolute top-0 left-0 right-0 h-1.5 flex", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex-1 bg-green-600" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex-1 bg-red-600" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex-1 bg-green-600" })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("nav", { className: "absolute top-0 left-0 right-0 flex items-center justify-between px-6 py-4 z-20", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(ChhatraLogo, { size: 44 }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "hidden md:block", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-white font-bold text-sm leading-tight", children: "২নং কপিলমুনি ইউনিয়ন" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-green-300 text-xs", children: "ছাত্রদল পোর্টাল" })
+              ] })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx(
                 Link,
                 {
-                  to: "/",
-                  className: "flex items-center gap-2 shrink-0",
-                  "data-ocid": "landing.logo_link",
-                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChhatraLogo, { size: 44 })
+                  to: "/login",
+                  "data-ocid": "landing.login_link",
+                  className: "text-white text-sm hover:text-green-300 transition-colors duration-200 hidden sm:inline",
+                  children: "লগইন"
                 }
               ),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 min-w-0", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "h1",
-                  {
-                    className: "text-sm md:text-base font-bold text-white leading-tight truncate",
-                    style: { fontFamily: "var(--font-display)" },
-                    children: "২নং কপিলমুনি ইউনিয়ন ছাত্রদল পোর্টাল"
-                  }
-                ),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-white/60 hidden sm:block", children: "Bangladesh Jatiotabadi Chhatra Dal" })
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("nav", { className: "hidden md:flex items-center gap-2 shrink-0", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "button",
-                  {
-                    type: "button",
-                    onClick: scrollToAbout,
-                    className: "px-4 py-1.5 text-sm font-semibold rounded-full border border-white/50 text-white hover:bg-white/10 transition-smooth",
-                    "data-ocid": "landing.about_nav_link",
-                    children: "সম্পর্কে"
-                  }
-                ),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                Link,
+                {
+                  to: "/register",
+                  "data-ocid": "landing.register_nav_button",
+                  className: "px-4 py-2 rounded-lg text-sm font-semibold text-white",
+                  style: {
+                    background: "linear-gradient(135deg, #DC143C, #a00f2b)",
+                    boxShadow: "0 2px 12px rgba(220,20,60,0.4)"
+                  },
+                  children: "নিবন্ধন"
+                }
+              )
+            ] })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative z-10 flex flex-col items-center text-center px-4 mt-16", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "div",
+              {
+                "data-ocid": "landing.hero_logo",
+                style: {
+                  animation: "float 3s ease-in-out infinite, glow 3s ease-in-out infinite"
+                },
+                className: "mb-8",
+                children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChhatraLogo, { size: 140 })
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-6", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "h1",
+                {
+                  className: "text-4xl md:text-6xl font-black text-white leading-tight mb-2",
+                  style: {
+                    animation: "slideInLeft 0.8s ease forwards",
+                    textShadow: "0 2px 20px rgba(0,0,0,0.5)"
+                  },
+                  children: "২নং কপিলমুনি ইউনিয়ন"
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "h2",
+                {
+                  className: "text-3xl md:text-5xl font-black leading-tight",
+                  style: {
+                    animation: "slideInRight 0.8s ease 0.3s forwards",
+                    opacity: 0,
+                    background: "linear-gradient(90deg, #FFD700, #DC143C, #FFD700)",
+                    backgroundSize: "200% auto",
+                    WebkitBackgroundClip: "text",
+                    WebkitTextFillColor: "transparent",
+                    backgroundClip: "text"
+                  },
+                  children: "ছাত্রদল পোর্টাল"
+                }
+              )
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "p",
+              {
+                className: "text-green-200 text-base md:text-lg max-w-xl leading-relaxed mb-10",
+                style: {
+                  animation: "fadeInUp 0.8s ease 0.6s forwards",
+                  opacity: 0
+                },
+                children: "জাতীয়তাবাদী আদর্শে বিশ্বাসী তরুণ প্রজন্মের সংগঠন"
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "div",
+              {
+                className: "flex flex-col sm:flex-row gap-4",
+                style: {
+                  animation: "fadeInUp 0.8s ease 0.9s forwards",
+                  opacity: 0
+                },
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    Link,
+                    {
+                      to: "/register",
+                      "data-ocid": "landing.hero_register_button",
+                      className: "px-8 py-4 rounded-xl font-bold text-white text-lg transition-all duration-200 hover:scale-105",
+                      style: {
+                        background: "linear-gradient(135deg, #006A4E, #00a878)",
+                        boxShadow: "0 4px 20px rgba(0,106,78,0.5)"
+                      },
+                      children: "যোগ দিন"
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    Link,
+                    {
+                      to: "/committee",
+                      "data-ocid": "landing.committee_button",
+                      className: "px-8 py-4 rounded-xl font-bold text-white text-lg border-2 border-white hover:bg-white hover:text-green-900 transition-all duration-200",
+                      children: "কমিটি দেখুন"
+                    }
+                  )
+                ]
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "div",
+            {
+              className: "absolute bottom-8 left-1/2 -translate-x-1/2 text-white opacity-70",
+              style: { animation: "bounce 1.5s ease-in-out infinite" },
+              "data-ocid": "landing.scroll_arrow",
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronDown, { size: 32 })
+            }
+          )
+        ]
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "section",
+      {
+        "data-ocid": "landing.stats_bar",
+        className: "py-8 px-4",
+        style: { background: "linear-gradient(90deg, #006A4E, #004d38)" },
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "max-w-5xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-6", children: [
+          { label: "প্রতিষ্ঠিত", value: "১৯৭৮" },
+          { label: "ইউনিয়ন", value: "কপিলমুনি" },
+          { label: "উপজেলা", value: "কয়রা" },
+          { label: "জেলা", value: "খুলনা" }
+        ].map((stat) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-2xl font-black text-yellow-300 mb-1", children: stat.value }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-green-200 text-sm font-medium", children: stat.label })
+        ] }, stat.label)) })
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "section",
+      {
+        "data-ocid": "landing.about_section",
+        className: "py-20 px-4 bg-white",
+        children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "max-w-5xl mx-auto", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center mb-12", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "inline-block px-4 py-1 rounded-full text-sm font-semibold text-green-700 bg-green-50 border border-green-200 mb-3", children: "আমাদের সংগঠন" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-3xl md:text-4xl font-black text-gray-900", children: "আমাদের সম্পর্কে" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-16 h-1 bg-red-600 mx-auto mt-4 rounded-full" })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid md:grid-cols-2 gap-10 items-center", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-gray-700 text-base leading-relaxed mb-4", children: "বাংলাদেশ জাতীয়তাবাদী ছাত্রদল (বিজেসিডি) বাংলাদেশ জাতীয়তাবাদী দল (বিএনপি)-র ছাত্র সংগঠন। জাতীয়তাবাদী আদর্শ, গণতন্ত্র ও দেশপ্রেমের ভিত্তিতে গড়া এই সংগঠন দেশের তরুণ প্রজন্মকে সংগঠিত করে।" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-gray-700 text-base leading-relaxed mb-6", children: "২নং কপিলমুনি ইউনিয়ন ছাত্রদল — খুলনা জেলার কয়রা উপজেলার অন্তর্গত তরুণ নেতাকর্মীদের সংগঠিত করে দেশ ও জাতির কল্যাণে কাজ করে যাচ্ছে।" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-4", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs(
                   Link,
                   {
-                    to: "/login",
-                    className: "px-4 py-1.5 text-sm font-semibold rounded-full border border-white/50 text-white hover:bg-white/10 transition-smooth",
-                    "data-ocid": "landing.login_nav_link",
-                    children: "লগইন"
+                    to: "/committee",
+                    "data-ocid": "landing.about_committee_link",
+                    className: "inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-white font-semibold text-sm transition-all duration-200 hover:scale-105",
+                    style: {
+                      background: "linear-gradient(135deg, #006A4E, #00a878)"
+                    },
+                    children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(Users, { size: 16 }),
+                      "কমিটি দেখুন"
+                    ]
                   }
                 ),
                 /* @__PURE__ */ jsxRuntimeExports.jsx(
                   Link,
                   {
                     to: "/register",
-                    className: "px-4 py-1.5 text-sm font-bold rounded-full text-white transition-smooth",
-                    style: { background: "#DC143C" },
-                    "data-ocid": "landing.register_nav_button",
-                    children: "সদস্য হন"
+                    "data-ocid": "landing.about_register_link",
+                    className: "inline-flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold text-sm border-2 border-green-700 text-green-700 hover:bg-green-700 hover:text-white transition-all duration-200",
+                    children: "যোগ দিন"
                   }
                 )
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex md:hidden items-center gap-1", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-                Link,
-                {
-                  to: "/login",
-                  className: "px-3 py-1 text-xs font-semibold rounded-full border border-white/50 text-white",
-                  "data-ocid": "landing.mobile_login_link",
-                  children: "লগইন"
-                }
-              ) })
-            ] })
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(
-          "section",
-          {
-            className: "relative flex-1 flex items-center justify-center min-h-[92vh] overflow-hidden",
-            "data-ocid": "landing.hero_section",
-            style: {
-              background: "linear-gradient(135deg, #003d2e 0%, #006A4E 40%, #8B0000 80%, #DC143C 100%)"
-            },
-            children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                "div",
-                {
-                  className: "absolute inset-0 opacity-[0.07]",
-                  style: {
-                    backgroundImage: "repeating-linear-gradient(45deg, #FFD700 0px, #FFD700 2px, transparent 2px, transparent 28px)"
-                  }
-                }
-              ),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                "div",
-                {
-                  className: "absolute top-8 right-12 w-72 h-72 rounded-full opacity-[0.12]",
-                  style: {
-                    background: "radial-gradient(circle, #FFD700 0%, transparent 70%)"
-                  }
-                }
-              ),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                "div",
-                {
-                  className: "absolute bottom-16 left-8 w-56 h-56 rounded-full opacity-[0.12]",
-                  style: {
-                    background: "radial-gradient(circle, #DC143C 0%, transparent 70%)"
-                  }
-                }
-              ),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative z-10 max-w-screen-lg mx-auto px-4 py-20 flex flex-col items-center text-center gap-6", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  motion.div,
-                  {
-                    initial: { opacity: 0, scale: 0.8 },
-                    animate: { opacity: 1, scale: 1 },
-                    transition: { duration: 0.6 },
-                    className: "flex justify-center",
-                    children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      "div",
-                      {
-                        className: "p-3 rounded-full shadow-2xl",
-                        style: {
-                          background: "rgba(255,255,255,0.1)",
-                          backdropFilter: "blur(4px)"
-                        },
-                        children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChhatraLogo, { size: 120 })
-                      }
-                    )
-                  }
-                ),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                  motion.div,
-                  {
-                    initial: { opacity: 0, y: 40 },
-                    animate: { opacity: 1, y: 0 },
-                    transition: { duration: 0.7, delay: 0.2 },
-                    className: "flex flex-col gap-3",
-                    children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx(
-                        Badge,
-                        {
-                          className: "self-center px-4 py-1 text-xs font-semibold border tracking-widest uppercase",
-                          style: {
-                            background: "rgba(220,20,60,0.25)",
-                            borderColor: "#FFD700",
-                            color: "#FFD700"
-                          },
-                          children: "Bangladesh Zindabad 🇧🇩"
-                        }
-                      ),
-                      /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                        "h2",
-                        {
-                          className: "text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-white leading-tight",
-                          style: {
-                            fontFamily: "var(--font-display)",
-                            textShadow: "0 2px 20px rgba(0,0,0,0.5)"
-                          },
-                          children: [
-                            "২নং কপিলমুনি",
-                            /* @__PURE__ */ jsxRuntimeExports.jsx("br", {}),
-                            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { color: "#FFD700" }, children: "ইউনিয়ন ছাত্রদল" }),
-                            /* @__PURE__ */ jsxRuntimeExports.jsx("br", {}),
-                            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-white", children: "পোর্টাল" })
-                          ]
-                        }
-                      ),
-                      /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                        "p",
-                        {
-                          className: "text-lg md:text-xl text-white/85 mt-2",
-                          style: { fontFamily: "var(--font-body)" },
-                          children: [
-                            "শিক্ষা, ঐক্য, অগ্রগতি ",
-                            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-white/60", children: "|" }),
-                            " ",
-                            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { color: "#FFD700" }, children: "Bangladesh Zindabad" })
-                          ]
-                        }
-                      )
-                    ]
-                  }
-                ),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                  motion.div,
-                  {
-                    initial: { opacity: 0, y: 20 },
-                    animate: { opacity: 1, y: 0 },
-                    transition: { duration: 0.6, delay: 0.5 },
-                    className: "flex flex-col sm:flex-row gap-4 mt-4",
-                    children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx(Link, { to: "/register", "data-ocid": "landing.get_started_button", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-                        Button,
-                        {
-                          size: "lg",
-                          className: "px-10 py-3 text-lg font-bold rounded-full shadow-xl transition-smooth hover:scale-105",
-                          style: {
-                            background: "#DC143C",
-                            color: "white",
-                            border: "none"
-                          },
-                          children: "Get Started"
-                        }
-                      ) }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx(
-                        Button,
-                        {
-                          size: "lg",
-                          variant: "outline",
-                          onClick: scrollToAbout,
-                          className: "px-10 py-3 text-lg font-bold rounded-full border-2 border-white text-white bg-transparent hover:bg-white/10 transition-smooth",
-                          "data-ocid": "landing.learn_more_button",
-                          children: "আরো জানুন"
-                        }
-                      )
-                    ]
-                  }
-                )
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                motion.div,
-                {
-                  animate: { y: [0, 12, 0] },
-                  transition: { repeat: Number.POSITIVE_INFINITY, duration: 2 },
-                  className: "absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1 text-white/50",
-                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-5 h-8 rounded-full border-2 border-white/30 flex justify-center pt-1.5", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-1 h-2 rounded-full bg-white/50" }) })
-                }
-              )
-            ]
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "section",
-          {
-            className: "py-8",
-            style: { background: "#006A4E" },
-            "data-ocid": "landing.stats_section",
-            children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "max-w-screen-lg mx-auto px-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid grid-cols-1 sm:grid-cols-3 gap-4", children: STATS.map((stat, i2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              motion.div,
+              ] })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "relative", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "div",
               {
-                initial: { opacity: 0, y: 20 },
-                whileInView: { opacity: 1, y: 0 },
-                viewport: { once: true },
-                transition: { delay: i2 * 0.12 },
-                className: "flex items-center justify-center gap-4 rounded-xl px-6 py-5 border",
+                className: "rounded-2xl p-8 relative overflow-hidden",
                 style: {
-                  background: "rgba(0,0,0,0.2)",
-                  borderColor: "#FFD700",
-                  borderWidth: "1px"
+                  background: "linear-gradient(135deg, #006A4E 0%, #004d38 100%)"
                 },
-                "data-ocid": `landing.stat.${i2 + 1}`,
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(stat.icon, { size: 32, style: { color: "#FFD700" } }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-left", children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      "p",
-                      {
-                        className: "text-2xl font-bold text-white",
-                        style: { fontFamily: "var(--font-display)" },
-                        children: stat.value
-                      }
-                    ),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-white/70", children: stat.label })
-                  ] })
-                ]
-              },
-              stat.label
-            )) }) })
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "section",
-          {
-            id: "about",
-            className: "py-20",
-            style: { background: "#f8f9f4" },
-            "data-ocid": "landing.about_section",
-            children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "max-w-screen-lg mx-auto px-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col lg:flex-row items-center gap-12", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                motion.div,
-                {
-                  initial: { opacity: 0, x: -40 },
-                  whileInView: { opacity: 1, x: 0 },
-                  viewport: { once: true },
-                  transition: { duration: 0.7 },
-                  className: "flex-shrink-0 flex justify-center",
-                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-                    "div",
-                    {
-                      className: "p-6 rounded-full shadow-2xl",
-                      style: {
-                        background: "linear-gradient(135deg, #006A4E, #003d2e)"
-                      },
-                      children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChhatraLogo, { size: 160 })
-                    }
-                  )
-                }
-              ),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                motion.div,
-                {
-                  initial: { opacity: 0, x: 40 },
-                  whileInView: { opacity: 1, x: 0 },
-                  viewport: { once: true },
-                  transition: { duration: 0.7 },
-                  className: "flex-1 min-w-0",
-                  children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      Badge,
-                      {
-                        className: "mb-3 px-3 py-1 text-xs font-semibold",
-                        style: { background: "#DC143C", color: "white" },
-                        children: "আমাদের সম্পর্কে"
-                      }
-                    ),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      "h3",
-                      {
-                        className: "text-3xl md:text-4xl font-bold mb-4",
-                        style: { fontFamily: "var(--font-display)", color: "#006A4E" },
-                        children: "বাংলাদেশ জাতীয়তাবাদী ছাত্রদল সম্পর্কে"
-                      }
-                    ),
-                    /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                      "p",
-                      {
-                        className: "text-base mb-4",
-                        style: { color: "#333", lineHeight: "1.8" },
-                        children: [
-                          "বাংলাদেশ জাতীয়তাবাদী ছাত্রদল (BJCD) বাংলাদেশ জাতীয়তাবাদী দল (BNP)-এর ছাত্র সংগঠন। এটি ",
-                          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "১ জানুয়ারি ১৯৭৯" }),
-                          " সালে মহামান্য রাষ্ট্রপতি",
-                          " ",
-                          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "জিয়াউর রহমান" }),
-                          "-এর নেতৃত্বে প্রতিষ্ঠিত হয়।"
-                        ]
-                      }
-                    ),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      "p",
-                      {
-                        className: "text-base mb-6",
-                        style: { color: "#333", lineHeight: "1.8" },
-                        children: "গণতান্ত্রিক মূল্যবোধ, ছাত্র অধিকার এবং বাংলাদেশি জাতীয়তাবাদের আদর্শে অনুপ্রাণিত এই সংগঠন দেশের প্রতিটি কোণে শিক্ষার্থীদের অধিকার প্রতিষ্ঠায় নিরলস কাজ করে যাচ্ছে।"
-                      }
-                    ),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      "p",
-                      {
-                        className: "text-sm mb-6",
-                        style: { color: "#666", fontStyle: "italic" },
-                        children: "Bangladesh Jatiotabadi Chhatra Dal (BJCD) is the student wing of BNP, founded on January 1, 1979, dedicated to democratic values and student rights across Bangladesh."
-                      }
-                    ),
-                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap gap-3", children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx(Link, { to: "/committee", "data-ocid": "landing.committee_link", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-                        Button,
-                        {
-                          style: { background: "#006A4E", color: "white" },
-                          className: "font-semibold rounded-full px-6",
-                          children: "কমিটি দেখুন"
-                        }
-                      ) }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx(Link, { to: "/register", "data-ocid": "landing.about_register_link", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-                        Button,
-                        {
-                          variant: "outline",
-                          className: "font-semibold rounded-full px-6 border-2",
-                          style: { borderColor: "#DC143C", color: "#DC143C" },
-                          children: "সদস্য হন"
-                        }
-                      ) })
-                    ] })
-                  ]
-                }
-              )
-            ] }) })
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "section",
-          {
-            className: "py-10",
-            style: { background: "#DC143C" },
-            "data-ocid": "landing.slogan_section",
-            children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "max-w-screen-lg mx-auto px-4 flex items-center justify-center gap-6", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                "div",
-                {
-                  className: "h-px flex-1",
-                  style: { background: "rgba(255,215,0,0.6)" }
-                }
-              ),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                motion.h3,
-                {
-                  initial: { opacity: 0, scale: 0.9 },
-                  whileInView: { opacity: 1, scale: 1 },
-                  viewport: { once: true },
-                  className: "text-2xl md:text-4xl font-bold text-white text-center",
-                  style: {
-                    fontFamily: "var(--font-display)",
-                    textShadow: "0 2px 8px rgba(0,0,0,0.3)"
-                  },
-                  children: "বাংলাদেশ জিন্দাবাদ 🇧🇩"
-                }
-              ),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                "div",
-                {
-                  className: "h-px flex-1",
-                  style: { background: "rgba(255,215,0,0.6)" }
-                }
-              )
-            ] })
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "section",
-          {
-            className: "py-20",
-            style: { background: "#fff" },
-            "data-ocid": "landing.features_section",
-            children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "max-w-screen-lg mx-auto px-4", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                motion.div,
-                {
-                  initial: { opacity: 0, y: 20 },
-                  whileInView: { opacity: 1, y: 0 },
-                  viewport: { once: true },
-                  className: "text-center mb-12",
-                  children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      Badge,
-                      {
-                        className: "mb-3 px-3 py-1 text-xs font-semibold",
-                        style: { background: "#006A4E", color: "white" },
-                        children: "পোর্টালের সুবিধা"
-                      }
-                    ),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      "h3",
-                      {
-                        className: "text-3xl md:text-4xl font-bold",
-                        style: { fontFamily: "var(--font-display)", color: "#006A4E" },
-                        children: "আমাদের লক্ষ্য"
-                      }
-                    ),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-base mt-3", style: { color: "#666" }, children: "শিক্ষা, ঐক্য ও অগ্রগতির পথে — আপনার সব প্রয়োজন এক পোর্টালে" })
-                  ]
-                }
-              ),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6", children: FEATURES.map((f2, i2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                motion.div,
-                {
-                  initial: { opacity: 0, y: 30 },
-                  whileInView: { opacity: 1, y: 0 },
-                  viewport: { once: true },
-                  transition: { delay: i2 * 0.1 },
-                  className: "rounded-2xl p-6 border-2 flex flex-col gap-4 hover:shadow-lg transition-smooth",
-                  style: { borderColor: "#e8f4f0", background: "#f8fdf9" },
-                  "data-ocid": `landing.feature.${i2 + 1}`,
-                  children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      "div",
-                      {
-                        className: "w-12 h-12 rounded-xl flex items-center justify-center",
-                        style: {
-                          background: "linear-gradient(135deg, #006A4E, #004d38)"
-                        },
-                        children: /* @__PURE__ */ jsxRuntimeExports.jsx(f2.icon, { size: 22, color: "white" })
-                      }
-                    ),
-                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx(
-                        "h4",
-                        {
-                          className: "font-bold text-lg mb-1",
-                          style: {
-                            color: "#006A4E",
-                            fontFamily: "var(--font-display)"
-                          },
-                          children: f2.title
-                        }
-                      ),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx(
-                        "p",
-                        {
-                          className: "text-xs font-medium mb-2",
-                          style: { color: "#DC143C" },
-                          children: f2.subtitle
-                        }
-                      ),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx(
-                        "p",
-                        {
-                          className: "text-sm leading-relaxed",
-                          style: { color: "#555" },
-                          children: f2.desc
-                        }
-                      )
-                    ] })
-                  ]
-                },
-                f2.title
-              )) })
-            ] })
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "section",
-          {
-            className: "py-16",
-            style: {
-              background: "linear-gradient(135deg, #003d2e 0%, #006A4E 60%, #004d38 100%)"
-            },
-            "data-ocid": "landing.cta_section",
-            children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "max-w-screen-lg mx-auto px-4 text-center flex flex-col items-center gap-6", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              motion.div,
-              {
-                initial: { opacity: 0, y: 20 },
-                whileInView: { opacity: 1, y: 0 },
-                viewport: { once: true },
                 children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsx(
-                    "h3",
+                    "div",
                     {
-                      className: "text-3xl md:text-4xl font-bold text-white mb-3",
-                      style: {
-                        fontFamily: "var(--font-display)",
-                        textShadow: "0 2px 10px rgba(0,0,0,0.4)"
-                      },
-                      children: "আজই ছাত্রদলে যোগ দিন"
+                      className: "absolute top-0 right-0 w-24 h-24 rounded-bl-full opacity-20",
+                      style: { background: "#FFD700" }
                     }
                   ),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-white/80 text-lg max-w-xl mx-auto mb-6", children: "দেশের জন্য, শিক্ষার জন্য, গণতন্ত্রের জন্য — আমাদের সাথে থাকুন" }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(Link, { to: "/register", "data-ocid": "landing.cta_register_button", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-                    Button,
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "div",
                     {
-                      size: "lg",
-                      className: "px-12 py-4 text-lg font-bold rounded-full shadow-2xl hover:scale-105 transition-smooth",
-                      style: {
-                        background: "#DC143C",
-                        color: "white",
-                        border: "none"
-                      },
-                      children: "এখনই নিবন্ধন করুন"
+                      className: "absolute bottom-0 left-0 w-16 h-16 rounded-tr-full opacity-20",
+                      style: { background: "#DC143C" }
                     }
-                  ) })
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex justify-center mb-6", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChhatraLogo, { size: 72 }) }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("blockquote", { className: "text-white text-base italic leading-relaxed text-center mb-4", children: "“দেশের জন্য, মানুষের জন্য, গণতন্ত্রের জন্য — ছাত্রদলের প্রতিশ্রুতি।”" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-green-200 text-sm text-center font-medium", children: "— বাংলাদেশ জাতীয়তাবাদী ছাত্রদল" })
                 ]
               }
             ) })
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "footer",
-          {
-            className: "py-10",
-            style: { background: "#003d2e" },
-            "data-ocid": "landing.footer",
-            children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "max-w-screen-xl mx-auto px-4 flex flex-col items-center gap-4", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(ChhatraLogo, { size: 72 }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                "p",
-                {
-                  className: "text-xl font-bold text-white text-center",
-                  style: { fontFamily: "var(--font-display)" },
-                  children: "২নং কপিলমুনি ইউনিয়ন ছাত্রদল"
-                }
-              ),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-white/60 text-center", children: "Bangladesh Jatiotabadi Chhatra Dal — Khulna" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                "div",
-                {
-                  className: "h-px w-48 my-2",
-                  style: { background: "rgba(255,215,0,0.3)" }
-                }
-              ),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-white/70 text-center", children: "© ২নং কপিলমুনি ইউনিয়ন ছাত্রদল - সর্বস্বত্ব সংরক্ষিত" })
+          ] })
+        ] })
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "section",
+      {
+        "data-ocid": "landing.features_section",
+        className: "py-20 px-4",
+        style: { background: "#f8f9fa" },
+        children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "max-w-5xl mx-auto", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center mb-12", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "inline-block px-4 py-1 rounded-full text-sm font-semibold text-green-700 bg-green-50 border border-green-200 mb-3", children: "প্ল্যাটফর্ম সুবিধা" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-3xl md:text-4xl font-black text-gray-900", children: "আমাদের সুবিধাসমূহ" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-16 h-1 bg-red-600 mx-auto mt-4 rounded-full" })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid sm:grid-cols-2 lg:grid-cols-3 gap-6", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              FeatureCard,
+              {
+                icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Users, { size: 22 }),
+                title: "সদস্য নিবন্ধন",
+                desc: "ছাত্রদলে যোগ দিতে অনলাইনে নিবন্ধন করুন",
+                delay: 0
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              FeatureCard,
+              {
+                icon: /* @__PURE__ */ jsxRuntimeExports.jsx(MessageCircle, { size: 22 }),
+                title: "গ্রুপ চ্যাট",
+                desc: "সকল সদস্যদের সাথে আলোচনা করুন",
+                delay: 100
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              FeatureCard,
+              {
+                icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Bell, { size: 22 }),
+                title: "নোটিশ বোর্ড",
+                desc: "সাংগঠনিক সকল নোটিশ এখানে পাবেন",
+                delay: 200
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              FeatureCard,
+              {
+                icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Image$1, { size: 22 }),
+                title: "ফটো গ্যালারি",
+                desc: "সংগঠনের স্মরণীয় মুহূর্তগুলো",
+                delay: 300
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              FeatureCard,
+              {
+                icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Award, { size: 22 }),
+                title: "পদবী তালিকা",
+                desc: "কমিটির পদবী অনুযায়ী সদস্যদের তালিকা",
+                delay: 400
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              FeatureCard,
+              {
+                icon: /* @__PURE__ */ jsxRuntimeExports.jsx(BookOpen, { size: 22 }),
+                title: "সদস্য কার্ড",
+                desc: "সদস্যপদের ডিজিটাল সার্টিফিকেট ডাউনলোড করুন",
+                delay: 500
+              }
+            )
+          ] })
+        ] })
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "section",
+      {
+        "data-ocid": "landing.why_join_section",
+        className: "py-20 px-4 bg-white",
+        children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "max-w-5xl mx-auto", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center mb-12", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "inline-block px-4 py-1 rounded-full text-sm font-semibold text-red-600 bg-red-50 border border-red-200 mb-3", children: "আমাদের আদর্শ" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-3xl md:text-4xl font-black text-gray-900", children: "কেন ছাত্রদলে যোগ দেবেন?" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-16 h-1 bg-green-700 mx-auto mt-4 rounded-full" })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid sm:grid-cols-2 gap-6", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              ReasonCard,
+              {
+                icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Heart, { size: 22 }),
+                title: "দেশপ্রেম",
+                desc: "দেশ ও জাতির সেবায় নিজেকে নিয়োজিত করুন",
+                delay: 0
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              ReasonCard,
+              {
+                icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Star, { size: 22 }),
+                title: "নেতৃত্ব বিকাশ",
+                desc: "নিজের মধ্যে নেতৃত্বের গুণাবলী তৈরি করুন",
+                delay: 150
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              ReasonCard,
+              {
+                icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Users, { size: 22 }),
+                title: "ঐক্য",
+                desc: "একতাবদ্ধ হয়ে আরও শক্তিশালী হই",
+                delay: 300
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              ReasonCard,
+              {
+                icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Flag, { size: 22 }),
+                title: "গণতন্ত্র",
+                desc: "গণতান্ত্রিক মূল্যবোধ রক্ষা করি",
+                delay: 450
+              }
+            )
+          ] })
+        ] })
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "section",
+      {
+        "data-ocid": "landing.counter_section",
+        className: "py-16 px-4",
+        style: { background: "linear-gradient(135deg, #0d1117, #1a2332)" },
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "max-w-4xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8 text-center", children: [
+          { target: 250, suffix: "+", label: "মোট সদস্য" },
+          { target: 46, suffix: "", label: "বছরের ইতিহাস" },
+          { target: 12, suffix: "", label: "পদবী বিভাগ" },
+          { target: 1, suffix: "টি", label: "ডিজিটাল প্ল্যাটফর্ম" }
+        ].map((item) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-4xl font-black text-yellow-300 mb-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(AnimatedCounter, { target: item.target, suffix: item.suffix }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-gray-400 text-sm", children: item.label })
+        ] }, item.label)) })
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "section",
+      {
+        className: "py-16",
+        style: { background: "linear-gradient(to bottom, #f0fdf4, #ffffff)" },
+        children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "container mx-auto px-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center mb-12", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "h2",
+              {
+                className: "text-3xl font-bold mb-3",
+                style: { color: "#006400" },
+                children: "আমাদের নেতৃত্ব"
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-gray-600", children: "জাতীয় থেকে স্থানীয় — আমাদের নেতাদের সাথে পরিচিত হন" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "div",
+              {
+                className: "w-24 h-1 mx-auto mt-4",
+                style: { background: "#cc0000" }
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-10", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-xl font-bold text-center mb-6 flex items-center justify-center gap-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "span",
+              {
+                className: "text-white px-4 py-1 rounded-full text-sm",
+                style: { background: "#006400" },
+                children: "কেন্দ্রীয় ছাত্রদল"
+              }
+            ) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-white rounded-xl shadow-lg p-6 text-center hover:shadow-xl transition-all hover:-translate-y-1", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "img",
+                  {
+                    src: "https://ui-avatars.com/api/?name=Sultan+Salahuddin+Tuku&background=006400&color=fff&size=120&bold=true",
+                    alt: "সুলতান সালাহউদ্দিন টুকু",
+                    className: "w-24 h-24 rounded-full mx-auto mb-4 border-4",
+                    style: { borderColor: "#006400" }
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { className: "text-lg font-bold text-gray-800", children: "সুলতান সালাহউদ্দিন টুকু" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "span",
+                  {
+                    className: "inline-block text-xs px-3 py-1 rounded-full mt-1",
+                    style: { background: "#dcfce7", color: "#166534" },
+                    children: "সভাপতি"
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-white rounded-xl shadow-lg p-6 text-center hover:shadow-xl transition-all hover:-translate-y-1", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "img",
+                  {
+                    src: "https://ui-avatars.com/api/?name=Nazimuddin+Alam&background=cc0000&color=fff&size=120&bold=true",
+                    alt: "নাজিমউদ্দিন আলম",
+                    className: "w-24 h-24 rounded-full mx-auto mb-4 border-4",
+                    style: { borderColor: "#cc0000" }
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { className: "text-lg font-bold text-gray-800", children: "নাজিমউদ্দিন আলম" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "span",
+                  {
+                    className: "inline-block text-xs px-3 py-1 rounded-full mt-1",
+                    style: { background: "#fee2e2", color: "#991b1b" },
+                    children: "সাধারণ সম্পাদক"
+                  }
+                )
+              ] })
             ] })
-          }
-        )
-      ]
-    }
-  );
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-10", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-xl font-bold text-center mb-6", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "span",
+              {
+                className: "text-white px-4 py-1 rounded-full text-sm",
+                style: { background: "#006400" },
+                children: "খুলনা জেলা ছাত্রদল"
+              }
+            ) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-white rounded-xl shadow-lg p-6 text-center hover:shadow-xl transition-all hover:-translate-y-1", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "img",
+                  {
+                    src: "https://ui-avatars.com/api/?name=Khulna+President&background=006400&color=fff&size=120&bold=true",
+                    alt: "খুলনা জেলা সভাপতি",
+                    className: "w-24 h-24 rounded-full mx-auto mb-4 border-4",
+                    style: { borderColor: "#006400" }
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { className: "text-lg font-bold text-gray-800", children: "খুলনা জেলা সভাপতি" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "span",
+                  {
+                    className: "inline-block text-xs px-3 py-1 rounded-full mt-1",
+                    style: { background: "#dcfce7", color: "#166534" },
+                    children: "সভাপতি"
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-gray-400 mt-2", children: "অ্যাডমিন প্যানেল থেকে আপডেট করুন" })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-white rounded-xl shadow-lg p-6 text-center hover:shadow-xl transition-all hover:-translate-y-1", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "img",
+                  {
+                    src: "https://ui-avatars.com/api/?name=Khulna+Secretary&background=cc0000&color=fff&size=120&bold=true",
+                    alt: "খুলনা জেলা সাধারণ সম্পাদক",
+                    className: "w-24 h-24 rounded-full mx-auto mb-4 border-4",
+                    style: { borderColor: "#cc0000" }
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { className: "text-lg font-bold text-gray-800", children: "খুলনা জেলা সাধারণ সম্পাদক" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "span",
+                  {
+                    className: "inline-block text-xs px-3 py-1 rounded-full mt-1",
+                    style: { background: "#fee2e2", color: "#991b1b" },
+                    children: "সাধারণ সম্পাদক"
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-gray-400 mt-2", children: "অ্যাডমিন প্যানেল থেকে আপডেট করুন" })
+              ] })
+            ] })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-xl font-bold text-center mb-6", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "span",
+              {
+                className: "text-white px-4 py-1 rounded-full text-sm",
+                style: { background: "#006400" },
+                children: "পাইগাছা উপজেলা ছাত্রদল"
+              }
+            ) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-white rounded-xl shadow-lg p-6 text-center hover:shadow-xl transition-all hover:-translate-y-1", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "img",
+                  {
+                    src: "https://ui-avatars.com/api/?name=Paikgacha+President&background=006400&color=fff&size=120&bold=true",
+                    alt: "পাইগাছা উপজেলা সভাপতি",
+                    className: "w-24 h-24 rounded-full mx-auto mb-4 border-4",
+                    style: { borderColor: "#006400" }
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { className: "text-lg font-bold text-gray-800", children: "পাইগাছা উপজেলা সভাপতি" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "span",
+                  {
+                    className: "inline-block text-xs px-3 py-1 rounded-full mt-1",
+                    style: { background: "#dcfce7", color: "#166534" },
+                    children: "সভাপতি"
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-gray-400 mt-2", children: "অ্যাডমিন প্যানেল থেকে আপডেট করুন" })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-white rounded-xl shadow-lg p-6 text-center hover:shadow-xl transition-all hover:-translate-y-1", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "img",
+                  {
+                    src: "https://ui-avatars.com/api/?name=Paikgacha+Secretary&background=cc0000&color=fff&size=120&bold=true",
+                    alt: "পাইগাছা উপজেলা সাধারণ সম্পাদক",
+                    className: "w-24 h-24 rounded-full mx-auto mb-4 border-4",
+                    style: { borderColor: "#cc0000" }
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { className: "text-lg font-bold text-gray-800", children: "পাইগাছা উপজেলা সাধারণ সম্পাদক" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "span",
+                  {
+                    className: "inline-block text-xs px-3 py-1 rounded-full mt-1",
+                    style: { background: "#fee2e2", color: "#991b1b" },
+                    children: "সাধারণ সম্পাদক"
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-gray-400 mt-2", children: "অ্যাডমিন প্যানেল থেকে আপডেট করুন" })
+              ] })
+            ] })
+          ] })
+        ] })
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "section",
+      {
+        "data-ocid": "landing.cta_section",
+        className: "py-24 px-4 relative overflow-hidden",
+        style: {
+          background: "linear-gradient(135deg, #006A4E 0%, #004d38 50%, #DC143C 100%)"
+        },
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "absolute inset-0 pointer-events-none overflow-hidden", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "div",
+              {
+                className: "absolute top-0 left-0 w-64 h-64 rounded-full opacity-10",
+                style: { background: "#FFD700", filter: "blur(80px)" }
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "div",
+              {
+                className: "absolute bottom-0 right-0 w-64 h-64 rounded-full opacity-10",
+                style: { background: "#DC143C", filter: "blur(80px)" }
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative z-10 max-w-3xl mx-auto text-center", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "div",
+              {
+                className: "flex justify-center mb-6",
+                style: { animation: "rotateIn 0.8s ease" },
+                children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChhatraLogo, { size: 80 })
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-3xl md:text-5xl font-black text-white mb-4", children: "আজই ছাত্রদলে যোগ দিন" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-green-100 text-lg mb-10", children: "জাতীয়তাবাদী আদর্শের পতাকা তুলে ধরুন" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              Link,
+              {
+                to: "/register",
+                "data-ocid": "landing.cta_register_button",
+                className: "inline-block px-10 py-4 rounded-xl font-bold text-green-900 text-lg transition-all duration-200 hover:scale-105",
+                style: {
+                  background: "linear-gradient(135deg, #FFD700, #FFA500)",
+                  boxShadow: "0 4px 24px rgba(255,215,0,0.4)"
+                },
+                children: "এখনই নিবন্ধন করুন"
+              }
+            )
+          ] })
+        ]
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "footer",
+      {
+        "data-ocid": "landing.footer",
+        style: { background: "#1a2332" },
+        className: "text-white pt-14 pb-6 px-4",
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "max-w-5xl mx-auto grid sm:grid-cols-3 gap-10 mb-10", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 mb-4", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(ChhatraLogo, { size: 52 }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-bold text-base leading-tight", children: "২নং কপিলমুনি" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-green-300 text-sm", children: "ইউনিয়ন ছাত্রদল" })
+                ] })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-gray-400 text-sm leading-relaxed", children: "জাতীয়তাবাদী আদর্শে বিশ্বাসী তরুণ প্রজন্মের সংগঠন। দেশ ও জাতির কল্যাণে নিবেদিত।" })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { className: "font-bold text-base mb-4 text-yellow-300", children: "দ্রুত লিংক" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "space-y-2", children: [
+                { to: "/", label: "হোম" },
+                { to: "/committee", label: "কমিটি" },
+                { to: "/gallery", label: "গ্যালারি" },
+                { to: "/register", label: "নিবন্ধন" },
+                { to: "/login", label: "লগইন" }
+              ].map((link) => /* @__PURE__ */ jsxRuntimeExports.jsx("li", { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                Link,
+                {
+                  to: link.to,
+                  className: "text-gray-400 hover:text-green-300 text-sm transition-colors duration-200 flex items-center gap-1",
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "w-1.5 h-1.5 rounded-full bg-green-500 inline-block" }),
+                    link.label
+                  ]
+                }
+              ) }, link.to)) })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { className: "font-bold text-base mb-4 text-yellow-300", children: "যোগাযোগ" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("ul", { className: "space-y-2 text-sm text-gray-400", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("li", { className: "flex items-center gap-2", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-green-400", children: "📍" }),
+                  "কপিলমুনি ইউনিয়ন"
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("li", { className: "flex items-center gap-2", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-green-400", children: "🏙️" }),
+                  "কয়রা উপজেলা"
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("li", { className: "flex items-center gap-2", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-green-400", children: "🗺️" }),
+                  "খুলনা জেলা"
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("li", { className: "flex items-center gap-2", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-green-400", children: "🇧🇩" }),
+                  "বাংলাদেশ"
+                ] })
+              ] })
+            ] })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "border-t border-gray-700 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-gray-500 text-xs text-center", children: "© ২০২৪ ২নং কপিলমুনি ইউনিয়ন ছাত্রদল। সর্বস্বত্ব সংরক্ষিত।" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-gray-600 text-xs", children: [
+              "Built with",
+              " ",
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "a",
+                {
+                  href: `https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(typeof window !== "undefined" ? window.location.hostname : "")}`,
+                  target: "_blank",
+                  rel: "noopener noreferrer",
+                  className: "text-green-500 hover:text-green-400 transition-colors duration-200",
+                  children: "caffeine.ai"
+                }
+              )
+            ] })
+          ] })
+        ]
+      }
+    )
+  ] });
 }
 const SAMPLE_ITEMS = [
   {
@@ -85755,15 +80174,15 @@ var convertToArrayPayload = (value) => Array.isArray(value) ? value : [value];
 var createSubject = () => {
   let _observers2 = [];
   const next = (value) => {
-    for (const observer2 of _observers2) {
-      observer2.next && observer2.next(value);
+    for (const observer of _observers2) {
+      observer.next && observer.next(value);
     }
   };
-  const subscribe2 = (observer2) => {
-    _observers2.push(observer2);
+  const subscribe2 = (observer) => {
+    _observers2.push(observer);
     return {
       unsubscribe: () => {
-        _observers2 = _observers2.filter((o2) => o2 !== observer2);
+        _observers2 = _observers2.filter((o2) => o2 !== observer);
       }
     };
   };
@@ -87374,16 +81793,48 @@ function CongratulationsModal({ onClose }) {
   );
 }
 const DESIGNATIONS = [
-  { value: "সদস্য", label: "সদস্য / Member" },
-  { value: "আহ্বায়ক", label: "আহ্বায়ক / Convener" },
-  {
-    value: "সিনিয়র যুগ্ম আহ্বায়ক",
-    label: "সিনিয়র যুগ্ম আহ্বায়ক / Senior Joint Convener"
-  },
-  { value: "যুগ্ম আহ্বায়ক", label: "যুগ্ম আহ্বায়ক / Joint Convener" },
-  { value: "সাধারণ সম্পাদক", label: "সাধারণ সম্পাদক / General Secretary" },
-  { value: "সহকারী সম্পাদক", label: "সহকারী সম্পাদক / Assistant Secretary" },
-  { value: "সাংগঠনিক সম্পাদক", label: "সাংগঠনিক সম্পাদক / Organizing Secretary" }
+  { value: "সভাপতি", label: "সভাপতি" },
+  { value: "সিনিয়র সহ-সভাপতি", label: "সিনিয়র সহ-সভাপতি" },
+  { value: "সহ-সভাপতি", label: "সহ-সভাপতি" },
+  { value: "সাধারণ সম্পাদক", label: "সাধারণ সম্পাদক" },
+  { value: "যুগ্ম সাধারণ সম্পাদক", label: "যুগ্ম সাধারণ সম্পাদক" },
+  { value: "সাংগঠনিক সম্পাদক", label: "সাংগঠনিক সম্পাদক" },
+  { value: "দপ্তর সম্পাদক", label: "দপ্তর সম্পাদক" },
+  { value: "প্রচার সম্পাদক", label: "প্রচার সম্পাদক" },
+  { value: "অর্থ সম্পাদক", label: "অর্থ সম্পাদক" },
+  { value: "ত্রাণ ও সমাজকল্যাণ সম্পাদক", label: "ত্রাণ ও সমাজকল্যাণ সম্পাদক" },
+  { value: "আইন বিষয়ক সম্পাদক", label: "আইন বিষয়ক সম্পাদক" },
+  { value: "বিজ্ঞান ও প্রযুক্তি সম্পাদক", label: "বিজ্ঞান ও প্রযুক্তি সম্পাদক" },
+  { value: "তথ্য ও গবেষণা সম্পাদক", label: "তথ্য ও গবেষণা সম্পাদক" },
+  { value: "সাহিত্য ও সংস্কৃতি সম্পাদক", label: "সাহিত্য ও সংস্কৃতি সম্পাদক" },
+  { value: "ক্রীড়া সম্পাদক", label: "ক্রীড়া সম্পাদক" },
+  { value: "স্বাস্থ্য বিষয়ক সম্পাদক", label: "স্বাস্থ্য বিষয়ক সম্পাদক" },
+  { value: "শিক্ষা বিষয়ক সম্পাদক", label: "শিক্ষা বিষয়ক সম্পাদক" },
+  { value: "পাঠাগার সম্পাদক", label: "পাঠাগার সম্পাদক" },
+  { value: "মানব সম্পদ উন্নয়ন সম্পাদক", label: "মানব সম্পদ উন্নয়ন সম্পাদক" },
+  { value: "কৃষি বিষয়ক সম্পাদক", label: "কৃষি বিষয়ক সম্পাদক" },
+  { value: "শ্রম বিষয়ক সম্পাদক", label: "শ্রম বিষয়ক সম্পাদক" },
+  { value: "আন্তর্জাতিক বিষয়ক সম্পাদক", label: "আন্তর্জাতিক বিষয়ক সম্পাদক" },
+  { value: "ধর্ম বিষয়ক সম্পাদক", label: "ধর্ম বিষয়ক সম্পাদক" },
+  { value: "কার্যনির্বাহী সদস্য", label: "কার্যনির্বাহী সদস্য" },
+  { value: "কনভেনর", label: "কনভেনর" },
+  { value: "যুগ্ম কনভেনর", label: "যুগ্ম কনভেনর" },
+  { value: "সিনিয়র যুগ্ম কনভেনর", label: "সিনিয়র যুগ্ম কনভেনর" },
+  { value: "সাধারণ সদস্য", label: "সাধারণ সদস্য" }
+];
+const JOIN_REASONS = [
+  "দেশমাতৃকার সেবা করতে চাই",
+  "বিএনপির আদর্শে বিশ্বাসী",
+  "জাতীয়তাবাদী আন্দোলনে অংশ নিতে চাই",
+  "ছাত্রসমাজের অধিকার রক্ষা করতে চাই",
+  "গণতন্ত্র পুনরুদ্ধারে ভূমিকা রাখতে চাই",
+  "শিক্ষাঙ্গনে শান্তি ও শৃঙ্খলা প্রতিষ্ঠা করতে চাই",
+  "তরুণ প্রজন্মের নেতৃত্ব গড়তে চাই",
+  "সামাজিক উন্নয়নে কাজ করতে চাই",
+  "দুর্নীতিমুক্ত বাংলাদেশ চাই",
+  "খালেদা জিয়ার মুক্তি ও গণতন্ত্র প্রতিষ্ঠায় লড়াই করতে চাই",
+  "দলের সাংগঠনিক কাজে সহায়তা করতে চাই",
+  "নতুন বাংলাদেশ গড়তে চাই"
 ];
 function RegisterPage() {
   const navigate = useNavigate();
@@ -87400,7 +81851,7 @@ function RegisterPage() {
       email: "",
       designation: "",
       fullAddress: "",
-      joinReason: ""
+      joinReasons: []
     }
   });
   const fileInputRef = reactExports.useRef(null);
@@ -87458,7 +81909,7 @@ function RegisterPage() {
         email: values.email,
         designation: values.designation,
         fullAddress: values.fullAddress,
-        joinReason: values.joinReason,
+        joinReason: values.joinReasons.join("\n"),
         photoBlob
       });
       setShowCongrats(true);
@@ -87694,35 +82145,88 @@ function RegisterPage() {
                     }
                   )
                 ] }),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-1", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                    "label",
+                    "p",
                     {
-                      htmlFor: "joinReason",
+                      id: "joinreasons-label",
                       className: "block text-sm font-semibold text-foreground",
                       children: [
                         "কেন ছাত্রদলে যোগ দিতে চান? ",
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[#DC143C]", children: "*" })
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[#DC143C]", children: "*" }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "block text-xs font-normal text-muted-foreground mt-0.5", children: "(একাধিক নির্বাচন করুন)" })
                       ]
                     }
                   ),
                   /* @__PURE__ */ jsxRuntimeExports.jsx(
-                    "textarea",
+                    Controller,
                     {
-                      id: "joinReason",
-                      ...register("joinReason", { required: "কারণ লিখুন" }),
-                      rows: 4,
-                      placeholder: "আপনার ছাত্রদলে যোগ দেওয়ার কারণ বিস্তারিত লিখুন...",
-                      className: `${fieldClass} resize-none`,
-                      "data-ocid": "register.joinreason_textarea"
+                      name: "joinReasons",
+                      control,
+                      rules: {
+                        validate: (v2) => v2.length > 0 || "অন্তত একটি কারণ নির্বাচন করুন"
+                      },
+                      render: ({ field }) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        "fieldset",
+                        {
+                          className: "grid grid-cols-1 sm:grid-cols-2 gap-2 border-0 p-0 m-0",
+                          "aria-labelledby": "joinreasons-label",
+                          "data-ocid": "register.joinreason_select",
+                          children: JOIN_REASONS.map((reason, idx) => {
+                            const checked = field.value.includes(reason);
+                            return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                              "button",
+                              {
+                                type: "button",
+                                onClick: () => {
+                                  const next = checked ? field.value.filter((r2) => r2 !== reason) : [...field.value, reason];
+                                  field.onChange(next);
+                                },
+                                className: `flex items-start gap-2.5 px-3 py-2.5 rounded-lg border text-left text-sm font-medium transition-all duration-200 ${checked ? "border-[#006A4E] bg-[#006A4E]/10 text-[#006A4E]" : "border-border bg-background text-foreground hover:border-[#006A4E]/50 hover:bg-[#006A4E]/5"}`,
+                                "data-ocid": `register.joinreason.item.${idx + 1}`,
+                                "aria-pressed": checked,
+                                children: [
+                                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                    "span",
+                                    {
+                                      className: `mt-0.5 flex-shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center transition-all duration-200 ${checked ? "border-[#006A4E] bg-[#006A4E]" : "border-muted-foreground"}`,
+                                      children: checked && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                        "svg",
+                                        {
+                                          className: "w-2.5 h-2.5 text-white",
+                                          fill: "none",
+                                          viewBox: "0 0 10 8",
+                                          "aria-hidden": "true",
+                                          children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                            "path",
+                                            {
+                                              d: "M1 4l3 3 5-6",
+                                              stroke: "currentColor",
+                                              strokeWidth: "1.8",
+                                              strokeLinecap: "round",
+                                              strokeLinejoin: "round"
+                                            }
+                                          )
+                                        }
+                                      )
+                                    }
+                                  ),
+                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "leading-snug", children: reason })
+                                ]
+                              },
+                              reason
+                            );
+                          })
+                        }
+                      )
                     }
                   ),
-                  errors.joinReason && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  errors.joinReasons && /* @__PURE__ */ jsxRuntimeExports.jsx(
                     "p",
                     {
                       className: "text-xs text-[#DC143C] mt-0.5",
                       "data-ocid": "register.joinreason_field_error",
-                      children: errors.joinReason.message
+                      children: errors.joinReasons.message
                     }
                   )
                 ] }),

@@ -41,9 +41,9 @@ mixin (
     MembersLib.getById(members, id);
   };
 
-  /// Admin: approve a pending member
-  public shared func approveMember(id : CommonTypes.MemberId) : async Bool {
-    MembersLib.approve(members, id, Time.now());
+  /// Admin: approve a pending member with optional admin signature
+  public shared func approveMember(id : CommonTypes.MemberId, adminSignature : ?Text) : async Bool {
+    MembersLib.approve(members, id, Time.now(), adminSignature);
   };
 
   /// Admin: reject a pending member with a reason
@@ -61,14 +61,19 @@ mixin (
     MembersLib.delete(members, id);
   };
 
+  /// Admin: change a member's designation and rank
+  public shared func updateMemberDesignation(id : CommonTypes.MemberId, newDesignation : Text, newRank : Nat) : async Bool {
+    MembersLib.updateDesignation(members, id, newDesignation, newRank);
+  };
+
   /// Public: get member stats
   public query func getMemberStats() : async CommonTypes.MemberStats {
     MembersLib.getStats(members, Time.now());
   };
 
-  /// Admin: authenticate with email/password — returns session token
-  public shared func adminLogin(email : Text, password : Text) : async ?Text {
-    AdminLib.verifyAdminCredentials(email, password, state, Time.now());
+  /// Admin: authenticate with password only — returns session token
+  public shared func adminLogin(password : Text) : async ?Text {
+    AdminLib.verifyAdminCredentials(password, state, Time.now());
   };
 
   /// Admin: validate session token

@@ -88,6 +88,13 @@ export interface UpdateMemberPayload {
     fullAddress: string;
     adminNotes: string;
 }
+export interface SiteSettings {
+    adminSignature: string;
+    centerName: string;
+    siteName: string;
+    upazilaName: string;
+    unionName: string;
+}
 export interface Notice {
     id: bigint;
     title: string;
@@ -102,20 +109,14 @@ export interface MemberStats {
     joinedYesterday: bigint;
     joinedToday: bigint;
 }
-export interface LibraryItem {
-    id: bigint;
-    title: string;
-    uploadedDate: Timestamp;
-    fileBlob: ExternalBlob;
-    description: string;
-    category: string;
-}
 export interface Member {
     id: MemberId;
     photoBlob: ExternalBlob;
     status: MemberStatus;
+    adminSignature?: string;
     approvedAt?: Timestamp;
     designation: string;
+    rank: bigint;
     rejectionReason: string;
     fullName: string;
     email: string;
@@ -124,6 +125,14 @@ export interface Member {
     fullAddress: string;
     registeredAt: Timestamp;
     adminNotes: string;
+}
+export interface LibraryItem {
+    id: bigint;
+    title: string;
+    uploadedDate: Timestamp;
+    fileBlob: ExternalBlob;
+    description: string;
+    category: string;
 }
 export interface Designation {
     id: bigint;
@@ -157,8 +166,8 @@ export interface backendInterface {
     addDesignation(title: string, rank: bigint): Promise<Designation>;
     addGalleryPhoto(payload: CreateGalleryPhotoPayload): Promise<GalleryPhoto>;
     addLibraryItem(payload: CreateLibraryItemPayload): Promise<LibraryItem>;
-    adminLogin(email: string, password: string): Promise<string | null>;
-    approveMember(id: MemberId): Promise<boolean>;
+    adminLogin(password: string): Promise<string | null>;
+    approveMember(id: MemberId, adminSignature: string | null): Promise<boolean>;
     archiveNotice(id: bigint): Promise<boolean>;
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
     createNotice(payload: CreateNoticePayload): Promise<Notice>;
@@ -175,6 +184,7 @@ export interface backendInterface {
     getMember(id: MemberId): Promise<Member | null>;
     getMemberStats(): Promise<MemberStats>;
     getMyMemberProfile(): Promise<Member | null>;
+    getSiteSettings(): Promise<SiteSettings>;
     isCallerAdmin(): Promise<boolean>;
     listAchievements(): Promise<Array<Achievement>>;
     listAlumni(): Promise<Array<AlumniRecord>>;
@@ -188,5 +198,7 @@ export interface backendInterface {
     rejectMember(id: MemberId, reason: string): Promise<boolean>;
     sendChatMessage(payload: SendMessagePayload): Promise<ChatMessage>;
     updateMember(id: MemberId, payload: UpdateMemberPayload): Promise<boolean>;
+    updateMemberDesignation(id: MemberId, newDesignation: string, newRank: bigint): Promise<boolean>;
+    updateSiteSettings(newSettings: SiteSettings): Promise<void>;
     validateAdminSession(token: string): Promise<boolean>;
 }

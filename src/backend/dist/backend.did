@@ -29,6 +29,14 @@ type UpdateMemberPayload =
    photoBlob: ExternalBlob;
  };
 type Timestamp = int;
+type SiteSettings = 
+ record {
+   adminSignature: text;
+   centerName: text;
+   siteName: text;
+   unionName: text;
+   upazilaName: text;
+ };
 type SendMessagePayload = 
  record {
    senderName: text;
@@ -71,6 +79,7 @@ type MemberId = nat;
 type Member = 
  record {
    adminNotes: text;
+   adminSignature: opt text;
    approvedAt: opt Timestamp;
    designation: text;
    email: text;
@@ -80,6 +89,7 @@ type Member =
    joinReason: text;
    phone: text;
    photoBlob: ExternalBlob;
+   rank: nat;
    registeredAt: Timestamp;
    rejectionReason: text;
    status: MemberStatus;
@@ -184,8 +194,8 @@ service : {
   addDesignation: (title: text, rank: nat) -> (Designation);
   addGalleryPhoto: (payload: CreateGalleryPhotoPayload) -> (GalleryPhoto);
   addLibraryItem: (payload: CreateLibraryItemPayload) -> (LibraryItem);
-  adminLogin: (email: text, password: text) -> (opt text);
-  approveMember: (id: MemberId) -> (bool);
+  adminLogin: (password: text) -> (opt text);
+  approveMember: (id: MemberId, adminSignature: opt text) -> (bool);
   archiveNotice: (id: nat) -> (bool);
   assignCallerUserRole: (user: principal, role: UserRole) -> ();
   createNotice: (payload: CreateNoticePayload) -> (Notice);
@@ -202,6 +212,7 @@ service : {
   getMember: (id: MemberId) -> (opt Member) query;
   getMemberStats: () -> (MemberStats) query;
   getMyMemberProfile: () -> (opt Member) query;
+  getSiteSettings: () -> (SiteSettings) query;
   isCallerAdmin: () -> (bool) query;
   listAchievements: () -> (vec Achievement) query;
   listAlumni: () -> (vec AlumniRecord) query;
@@ -215,5 +226,8 @@ service : {
   rejectMember: (id: MemberId, reason: text) -> (bool);
   sendChatMessage: (payload: SendMessagePayload) -> (ChatMessage);
   updateMember: (id: MemberId, payload: UpdateMemberPayload) -> (bool);
+  updateMemberDesignation: (id: MemberId, newDesignation: text, newRank:
+   nat) -> (bool);
+  updateSiteSettings: (newSettings: SiteSettings) -> ();
   validateAdminSession: (token: text) -> (bool) query;
 }

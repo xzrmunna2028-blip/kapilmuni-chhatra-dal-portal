@@ -136,7 +136,11 @@ export function useApproveMember() {
   const { actor } = useAct();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (id: bigint) => actor!.approveMember(id),
+    mutationFn: async ({
+      id,
+      adminSignature,
+    }: { id: bigint; adminSignature?: string }) =>
+      actor!.approveMember(id, adminSignature ?? null),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["members"] });
       qc.invalidateQueries({ queryKey: ["member-stats"] });
@@ -324,10 +328,48 @@ export function useDeleteDesignation() {
 export function useAdminLogin() {
   const { actor } = useAct();
   return useMutation({
+    mutationFn: async (password: string) => actor!.adminLogin(password),
+  });
+}
+
+export function useGetSiteSettings() {
+  const { actor, isFetching } = useAct();
+  return useQuery({
+    queryKey: ["siteSettings"],
+    queryFn: async () =>
+      actor
+        ? actor.getSiteSettings()
+        : {
+            siteName: "",
+            centerName: "",
+            upazilaName: "",
+            unionName: "",
+            adminSignature: "",
+          },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useUpdateSiteSettings() {
+  const { actor } = useAct();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (settings: import("@/backend").SiteSettings) =>
+      actor!.updateSiteSettings(settings),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["siteSettings"] }),
+  });
+}
+
+export function useUpdateMemberDesignation() {
+  const { actor } = useAct();
+  const qc = useQueryClient();
+  return useMutation({
     mutationFn: async ({
-      email,
-      password,
-    }: { email: string; password: string }) =>
-      actor!.adminLogin(email, password),
+      id,
+      designation,
+      rank,
+    }: { id: bigint; designation: string; rank: bigint }) =>
+      actor!.updateMemberDesignation(id, designation, rank),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["members"] }),
   });
 }

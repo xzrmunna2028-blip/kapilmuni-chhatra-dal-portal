@@ -116,8 +116,10 @@ export const Member = IDL.Record({
   'id' : MemberId,
   'photoBlob' : ExternalBlob,
   'status' : MemberStatus,
+  'adminSignature' : IDL.Opt(IDL.Text),
   'approvedAt' : IDL.Opt(Timestamp),
   'designation' : IDL.Text,
+  'rank' : IDL.Nat,
   'rejectionReason' : IDL.Text,
   'fullName' : IDL.Text,
   'email' : IDL.Text,
@@ -132,6 +134,13 @@ export const MemberStats = IDL.Record({
   'total' : IDL.Nat,
   'joinedYesterday' : IDL.Nat,
   'joinedToday' : IDL.Nat,
+});
+export const SiteSettings = IDL.Record({
+  'adminSignature' : IDL.Text,
+  'centerName' : IDL.Text,
+  'siteName' : IDL.Text,
+  'upazilaName' : IDL.Text,
+  'unionName' : IDL.Text,
 });
 export const RegisterMemberPayload = IDL.Record({
   'photoBlob' : ExternalBlob,
@@ -191,8 +200,8 @@ export const idlService = IDL.Service({
   'addDesignation' : IDL.Func([IDL.Text, IDL.Nat], [Designation], []),
   'addGalleryPhoto' : IDL.Func([CreateGalleryPhotoPayload], [GalleryPhoto], []),
   'addLibraryItem' : IDL.Func([CreateLibraryItemPayload], [LibraryItem], []),
-  'adminLogin' : IDL.Func([IDL.Text, IDL.Text], [IDL.Opt(IDL.Text)], []),
-  'approveMember' : IDL.Func([MemberId], [IDL.Bool], []),
+  'adminLogin' : IDL.Func([IDL.Text], [IDL.Opt(IDL.Text)], []),
+  'approveMember' : IDL.Func([MemberId, IDL.Opt(IDL.Text)], [IDL.Bool], []),
   'archiveNotice' : IDL.Func([IDL.Nat], [IDL.Bool], []),
   'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
   'createNotice' : IDL.Func([CreateNoticePayload], [Notice], []),
@@ -209,6 +218,7 @@ export const idlService = IDL.Service({
   'getMember' : IDL.Func([MemberId], [IDL.Opt(Member)], ['query']),
   'getMemberStats' : IDL.Func([], [MemberStats], ['query']),
   'getMyMemberProfile' : IDL.Func([], [IDL.Opt(Member)], ['query']),
+  'getSiteSettings' : IDL.Func([], [SiteSettings], ['query']),
   'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
   'listAchievements' : IDL.Func([], [IDL.Vec(Achievement)], ['query']),
   'listAlumni' : IDL.Func([], [IDL.Vec(AlumniRecord)], ['query']),
@@ -226,6 +236,12 @@ export const idlService = IDL.Service({
   'rejectMember' : IDL.Func([MemberId, IDL.Text], [IDL.Bool], []),
   'sendChatMessage' : IDL.Func([SendMessagePayload], [ChatMessage], []),
   'updateMember' : IDL.Func([MemberId, UpdateMemberPayload], [IDL.Bool], []),
+  'updateMemberDesignation' : IDL.Func(
+      [MemberId, IDL.Text, IDL.Nat],
+      [IDL.Bool],
+      [],
+    ),
+  'updateSiteSettings' : IDL.Func([SiteSettings], [], []),
   'validateAdminSession' : IDL.Func([IDL.Text], [IDL.Bool], ['query']),
 });
 
@@ -340,8 +356,10 @@ export const idlFactory = ({ IDL }) => {
     'id' : MemberId,
     'photoBlob' : ExternalBlob,
     'status' : MemberStatus,
+    'adminSignature' : IDL.Opt(IDL.Text),
     'approvedAt' : IDL.Opt(Timestamp),
     'designation' : IDL.Text,
+    'rank' : IDL.Nat,
     'rejectionReason' : IDL.Text,
     'fullName' : IDL.Text,
     'email' : IDL.Text,
@@ -356,6 +374,13 @@ export const idlFactory = ({ IDL }) => {
     'total' : IDL.Nat,
     'joinedYesterday' : IDL.Nat,
     'joinedToday' : IDL.Nat,
+  });
+  const SiteSettings = IDL.Record({
+    'adminSignature' : IDL.Text,
+    'centerName' : IDL.Text,
+    'siteName' : IDL.Text,
+    'upazilaName' : IDL.Text,
+    'unionName' : IDL.Text,
   });
   const RegisterMemberPayload = IDL.Record({
     'photoBlob' : ExternalBlob,
@@ -419,8 +444,8 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'addLibraryItem' : IDL.Func([CreateLibraryItemPayload], [LibraryItem], []),
-    'adminLogin' : IDL.Func([IDL.Text, IDL.Text], [IDL.Opt(IDL.Text)], []),
-    'approveMember' : IDL.Func([MemberId], [IDL.Bool], []),
+    'adminLogin' : IDL.Func([IDL.Text], [IDL.Opt(IDL.Text)], []),
+    'approveMember' : IDL.Func([MemberId, IDL.Opt(IDL.Text)], [IDL.Bool], []),
     'archiveNotice' : IDL.Func([IDL.Nat], [IDL.Bool], []),
     'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
     'createNotice' : IDL.Func([CreateNoticePayload], [Notice], []),
@@ -437,6 +462,7 @@ export const idlFactory = ({ IDL }) => {
     'getMember' : IDL.Func([MemberId], [IDL.Opt(Member)], ['query']),
     'getMemberStats' : IDL.Func([], [MemberStats], ['query']),
     'getMyMemberProfile' : IDL.Func([], [IDL.Opt(Member)], ['query']),
+    'getSiteSettings' : IDL.Func([], [SiteSettings], ['query']),
     'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
     'listAchievements' : IDL.Func([], [IDL.Vec(Achievement)], ['query']),
     'listAlumni' : IDL.Func([], [IDL.Vec(AlumniRecord)], ['query']),
@@ -454,6 +480,12 @@ export const idlFactory = ({ IDL }) => {
     'rejectMember' : IDL.Func([MemberId, IDL.Text], [IDL.Bool], []),
     'sendChatMessage' : IDL.Func([SendMessagePayload], [ChatMessage], []),
     'updateMember' : IDL.Func([MemberId, UpdateMemberPayload], [IDL.Bool], []),
+    'updateMemberDesignation' : IDL.Func(
+        [MemberId, IDL.Text, IDL.Nat],
+        [IDL.Bool],
+        [],
+      ),
+    'updateSiteSettings' : IDL.Func([SiteSettings], [], []),
     'validateAdminSession' : IDL.Func([IDL.Text], [IDL.Bool], ['query']),
   });
 };

@@ -22,14 +22,24 @@ module {
     phone : Text;
     email : Text;
     designation : Text;
+    rank : Nat; // lower rank = higher in hierarchy (0 = top)
     fullAddress : Text;
     joinReason : Text;
     photoBlob : Storage.ExternalBlob;
     status : MemberStatus;
     rejectionReason : Text;
     adminNotes : Text;
+    adminSignature : ?Text;
     registeredAt : Timestamp;
     approvedAt : ?Timestamp;
+  };
+
+  public type SiteSettings = {
+    siteName : Text;
+    centerName : Text;
+    upazilaName : Text;
+    unionName : Text;
+    adminSignature : Text;
   };
 
   public type ChatMessage = {
